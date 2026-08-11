@@ -141,6 +141,11 @@ if not DEBUG and not (SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY):
     from django.core.exceptions import ImproperlyConfigured
     raise ImproperlyConfigured('SUPABASE_URL/SUPABASE_SERVICE_ROLE_KEY não configurados.')
 
+# E-mail (ingresso) — sem RESEND_API_KEY, cai no backend Django padrão (console em dev).
+EMAIL_BACKEND = config('EMAIL_BACKEND', default='django.core.mail.backends.console.EmailBackend')
+DEFAULT_FROM_EMAIL = config('DEFAULT_FROM_EMAIL', default='ingressos@fireconference.local')
+RESEND_API_KEY = config('RESEND_API_KEY', default='')
+
 REST_FRAMEWORK = {
     'DEFAULT_PERMISSION_CLASSES': [
         'rest_framework.permissions.AllowAny',

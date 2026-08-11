@@ -82,6 +82,13 @@ export function InscricaoStatusPage() {
         {copiado ? 'Copiado!' : 'Copiar código Pix'}
       </button>
 
+      {inscricao.status === 'confirmada' && (
+        <>
+          <h2>Ingresso</h2>
+          <a href={`${import.meta.env.VITE_API_URL}/api/inscricoes/${token}/ingresso/`}>Baixar ingresso (PDF)</a>
+        </>
+      )}
+
       {inscricao.status === 'pendente' && (
         <>
           <h2>Comprovante de pagamento</h2>

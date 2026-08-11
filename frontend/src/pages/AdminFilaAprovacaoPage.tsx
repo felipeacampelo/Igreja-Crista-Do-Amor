@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { api, formatApiErrors } from '../services/api'
+import { adminApi, formatApiErrors } from '../services/api'
 import type { InscricaoFilaAprovacao } from '../types'
 
 const SEXO_LABEL: Record<InscricaoFilaAprovacao['sexo'], string> = {
@@ -15,7 +15,7 @@ export function AdminFilaAprovacaoPage() {
   const [motivos, setMotivos] = useState<Record<number, string>>({})
 
   function carregarFila() {
-    api
+    adminApi
       .get<InscricaoFilaAprovacao[]>('/api/admin/inscricoes/fila-aprovacao/')
       .then((response) => setFila(response.data))
       .catch((error) => {
@@ -32,7 +32,7 @@ export function AdminFilaAprovacaoPage() {
   async function aprovar(id: number) {
     setErros((prev) => ({ ...prev, [id]: [] }))
     try {
-      await api.post(`/api/admin/inscricoes/${id}/aprovar/`)
+      await adminApi.post(`/api/admin/inscricoes/${id}/aprovar/`)
       carregarFila()
     } catch (error: unknown) {
       const data = (error as { response?: { data?: unknown } })?.response?.data
@@ -49,7 +49,7 @@ export function AdminFilaAprovacaoPage() {
 
     setErros((prev) => ({ ...prev, [id]: [] }))
     try {
-      await api.post(`/api/admin/inscricoes/${id}/rejeitar/`, { motivo })
+      await adminApi.post(`/api/admin/inscricoes/${id}/rejeitar/`, { motivo })
       carregarFila()
     } catch (error: unknown) {
       const data = (error as { response?: { data?: unknown } })?.response?.data

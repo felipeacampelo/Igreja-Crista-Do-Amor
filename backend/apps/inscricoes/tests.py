@@ -4,6 +4,7 @@ from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Permission
+from django.core import mail
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase
 from rest_framework import status
@@ -11,6 +12,7 @@ from rest_framework.test import APITestCase
 
 from apps.lotes.models import Lote
 
+from .ingresso import build_ingresso_token, resolve_ingresso_token
 from .models import Cupom, Inscricao
 from .pix import gerar_payload_pix
 from .storage import UploadComprovanteError
@@ -478,3 +480,60 @@ class AprovacaoPagamentoTests(APITestCase):
         response = self.client.post(f'/api/admin/inscricoes/{self.inscricao.id}/aprovar/')
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_approving_sends_ingresso_email_with_pdf_attachment(self):
+        self._auth(self.aprovador)
+
+        self.client.post(f'/api/admin/inscricoes/{self.inscricao.id}/aprovar/')
+
+        self.assertEqual(len(mail.outbox), 1)
+        enviado = mail.outbox[0]
+        self.assertEqual(enviado.to, ['maria@example.com'])
+        self.assertEqual(len(enviado.attachments), 1)
+        nome, conteudo, tipo = enviado.attachments[0]
+        self.assertEqual(nome, 'ingresso.pdf')
+        self.assertEqual(tipo, 'application/pdf')
+        self.assertTrue(conteudo.startswith(b'%PDF'))
+
+    def test_rejecting_does_not_send_ingresso_email(self):
+        self._auth(self.aprovador)
+
+        self.client.post(f'/api/admin/inscricoes/{self.inscricao.id}/rejeitar/', {'motivo': 'teste'})
+
+        self.assertEqual(len(mail.outbox), 0)
+
+
+class IngressoTests(APITestCase):
+    def setUp(self):
+        self.lote = Lote.objects.create(nome='Lote 1', preco=Decimal('150.00'), limite_vagas=10)
+        self.inscricao = Inscricao.objects.create(
+            nome_completo='Maria Silva', cpf='111', email='maria@example.com', sexo='F',
+            data_nascimento=data_nascimento_com_idade(25), celular='11999990000',
+            lote=self.lote, preco_final=Decimal('150.00'), status=Inscricao.Status.CONFIRMADA,
+        )
+
+    def test_token_round_trip(self):
+        token = build_ingresso_token(self.inscricao)
+        resolvido = resolve_ingresso_token(token)
+
+        self.assertEqual(resolvido.id, self.inscricao.id)
+
+    def test_download_returns_pdf_when_confirmada(self):
+        response = self.client.get(f'/api/inscricoes/{self.inscricao.token}/ingresso/')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response['Content-Type'], 'application/pdf')
+        self.assertTrue(response.content.startswith(b'%PDF'))
+
+    def test_download_not_available_when_not_confirmada(self):
+        self.inscricao.status = Inscricao.Status.PENDENTE
+        self.inscricao.save()
+
+        response = self.client.get(f'/api/inscricoes/{self.inscricao.token}/ingresso/')
+
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_download_unknown_token_returns_404(self):
+        response = self.client.get('/api/inscricoes/token-que-nao-existe/ingresso/')
+
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)

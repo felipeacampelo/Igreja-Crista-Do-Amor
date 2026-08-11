@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
-import { api } from '../services/api'
+import { adminApi, api } from '../services/api'
 
 type AuthContextValue = {
   token: string | null
@@ -13,9 +13,9 @@ const STORAGE_KEY = 'admin_token'
 
 function aplicarToken(token: string | null) {
   if (token) {
-    api.defaults.headers.common['Authorization'] = `Token ${token}`
+    adminApi.defaults.headers.common['Authorization'] = `Token ${token}`
   } else {
-    delete api.defaults.headers.common['Authorization']
+    delete adminApi.defaults.headers.common['Authorization']
   }
 }
 

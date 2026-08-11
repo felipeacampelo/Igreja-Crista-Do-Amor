@@ -1,5 +1,6 @@
 import os
 
+from django.http import HttpResponse
 from rest_framework import generics, status
 from rest_framework.generics import get_object_or_404
 from rest_framework.response import Response
@@ -7,7 +8,9 @@ from rest_framework.views import APIView
 
 from apps.users.permissions import PodeAprovarPagamento
 
+from .ingresso import build_ingresso_pdf_bytes
 from .models import Inscricao
+from .notificacoes import enviar_ingresso_email_seguro
 from .serializers import (
     AdminInscricaoQueueSerializer,
     ComprovanteUploadSerializer,
@@ -87,6 +90,7 @@ class AprovarInscricaoView(APIView):
 
         inscricao.status = Inscricao.Status.CONFIRMADA
         inscricao.save(update_fields=['status', 'atualizado_em'])
+        enviar_ingresso_email_seguro(inscricao)
 
         return Response(AdminInscricaoQueueSerializer(inscricao).data)
 
@@ -107,3 +111,19 @@ class RejeitarInscricaoView(APIView):
         inscricao.save(update_fields=['status', 'motivo_rejeicao', 'atualizado_em'])
 
         return Response(AdminInscricaoQueueSerializer(inscricao).data)
+
+
+class IngressoDownloadView(APIView):
+    def get(self, request, token):
+        inscricao = get_object_or_404(Inscricao, token=token)
+
+        if inscricao.status != Inscricao.Status.CONFIRMADA:
+            return Response(
+                {'detail': 'Ingresso disponível apenas para inscrições confirmadas.'},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        pdf_bytes = build_ingresso_pdf_bytes(inscricao)
+        response = HttpResponse(pdf_bytes, content_type='application/pdf')
+        response['Content-Disposition'] = 'attachment; filename="ingresso.pdf"'
+        return response
