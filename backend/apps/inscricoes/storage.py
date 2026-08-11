@@ -27,6 +27,8 @@ def upload_comprovante(caminho, arquivo):
         raise UploadComprovanteError(str(exc)) from exc
 
     if response.status_code >= 400:
-        raise UploadComprovanteError(f'Supabase Storage retornou {response.status_code}: {response.text}')
+        raise UploadComprovanteError(
+            f'Supabase Storage retornou {response.status_code}: {response.text[:500]}'
+        )
 
     return caminho
