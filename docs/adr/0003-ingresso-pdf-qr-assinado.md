@@ -1,0 +1,3 @@
+# Ingresso como PDF com QR de token assinado
+
+Seguindo o padrão do Mio-Festa-2026 (outro projeto de referência), o ingresso não é uma tela do app: é um PDF gerado por inscrição confirmada, com um QR code que codifica um token assinado no servidor (não um ID cru), validado no check-in. O QR também é exibido na página de status pública do inscrito, já que este projeto — diferente do Mio-Festa-2026 — não tem tela autenticada de participante. Decidido para reaproveitar um fluxo de check-in já validado (evita reinventar geração de PDF, assinatura de token e scanner) em vez de desenhar um mecanismo novo.
