@@ -122,9 +122,14 @@ CORS_ALLOWED_ORIGINS = config(
 
 # Pix copia-e-cola (ADR-0001) — placeholders para dev/teste local.
 # PRECISA ser configurado com a chave Pix real da igreja antes de qualquer deploy.
-PIX_KEY = config('PIX_KEY', default='chave-pix-nao-configurada@example.com')
+_PIX_KEY_PLACEHOLDER = 'chave-pix-nao-configurada@example.com'
+PIX_KEY = config('PIX_KEY', default=_PIX_KEY_PLACEHOLDER)
 PIX_MERCHANT_NAME = config('PIX_MERCHANT_NAME', default='FIRE CONFERENCE')
 PIX_MERCHANT_CITY = config('PIX_MERCHANT_CITY', default='SAO PAULO')
+
+if not DEBUG and PIX_KEY == _PIX_KEY_PLACEHOLDER:
+    from django.core.exceptions import ImproperlyConfigured
+    raise ImproperlyConfigured('PIX_KEY não configurada — defina a chave Pix real antes de deployar.')
 
 REST_FRAMEWORK = {
     'DEFAULT_PERMISSION_CLASSES': [

@@ -203,6 +203,14 @@ class PixPayloadTests(TestCase):
 
         self.assertEqual(_crc16_ccitt_false(payload[:-4]), payload[-4:])
 
+    def test_crc_matches_known_reference_vector(self):
+        # Self-consistency alone can't catch a wrong poly/init — "123456789" is
+        # the standard catalogue check value for CRC-16/CCITT-FALSE (0x29B1),
+        # independent of anything in this codebase.
+        from .pix import _crc16_ccitt_false
+
+        self.assertEqual(_crc16_ccitt_false('123456789'), '29B1')
+
     def test_long_name_and_city_are_truncated(self):
         payload = gerar_payload_pix(
             chave='pix@fireconference.local',
