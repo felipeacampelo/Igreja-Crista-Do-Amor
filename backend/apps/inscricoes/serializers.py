@@ -1,12 +1,14 @@
 from datetime import date
 from decimal import Decimal
 
+from django.conf import settings
 from django.db import transaction
 from rest_framework import serializers
 
 from apps.lotes.models import Lote
 
 from .models import Cupom, Inscricao
+from .pix import gerar_payload_pix
 
 
 def _calcula_idade(data_nascimento, hoje=None):
@@ -81,9 +83,19 @@ class InscricaoCreateSerializer(serializers.ModelSerializer):
 class InscricaoStatusSerializer(serializers.ModelSerializer):
     lote = serializers.CharField(source='lote.nome', read_only=True)
     cupom = serializers.CharField(source='cupom.codigo', read_only=True, allow_null=True)
+    pix_payload = serializers.SerializerMethodField()
 
     class Meta:
         model = Inscricao
         fields = [
-            'nome_completo', 'lote', 'cupom', 'status', 'preco_final', 'criado_em',
+            'nome_completo', 'lote', 'cupom', 'status', 'preco_final', 'criado_em', 'pix_payload',
         ]
+
+    def get_pix_payload(self, obj):
+        return gerar_payload_pix(
+            chave=settings.PIX_KEY,
+            nome_recebedor=settings.PIX_MERCHANT_NAME,
+            cidade_recebedor=settings.PIX_MERCHANT_CITY,
+            valor=obj.preco_final,
+            txid=f'INSC{obj.id}',
+        )

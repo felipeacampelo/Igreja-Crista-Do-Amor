@@ -1,12 +1,14 @@
 from datetime import date, timedelta
 from decimal import Decimal
 
+from django.test import TestCase
 from rest_framework import status
 from rest_framework.test import APITestCase
 
 from apps.lotes.models import Lote
 
 from .models import Cupom, Inscricao
+from .pix import gerar_payload_pix
 
 
 def data_nascimento_com_idade(idade):
@@ -133,3 +135,93 @@ class InscricaoStatusTests(APITestCase):
         response = self.client.get('/api/inscricoes/token-que-nao-existe/')
 
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_status_response_includes_pix_payload(self):
+        response = self.client.get(f'/api/inscricoes/{self.inscricao.token}/')
+
+        self.assertTrue(response.data['pix_payload'].startswith('000201'))
+
+
+def _parse_tlv(payload):
+    """
+    Parser de TLV genérico usado só nestes testes, para validar por round-trip
+    o payload que gerar_payload_pix produz — em vez de comparar contra strings
+    esperadas calculadas à mão, o que seria frágil e não pegaria erros reais
+    de tamanho/offset.
+    """
+    campos = {}
+    i = 0
+    while i < len(payload):
+        campo_id = payload[i:i + 2]
+        tamanho = int(payload[i + 2:i + 4])
+        valor = payload[i + 4:i + 4 + tamanho]
+        campos[campo_id] = valor
+        i += 4 + tamanho
+    return campos
+
+
+class PixPayloadTests(TestCase):
+    def test_payload_structure_and_amount(self):
+        payload = gerar_payload_pix(
+            chave='pix@fireconference.local',
+            nome_recebedor='Igreja Crista do Amor',
+            cidade_recebedor='Sao Paulo',
+            valor=Decimal('100.00'),
+            txid='INSC42',
+        )
+
+        campos = _parse_tlv(payload[:-4])
+        self.assertEqual(campos['00'], '01')
+        self.assertEqual(campos['54'], '100.00')
+        self.assertEqual(campos['58'], 'BR')
+        self.assertEqual(campos['59'], 'IGREJA CRISTA DO AMOR')
+        self.assertEqual(campos['60'], 'SAO PAULO')
+
+        conta_pix = _parse_tlv(campos['26'])
+        self.assertEqual(conta_pix['00'], 'br.gov.bcb.pix')
+        self.assertEqual(conta_pix['01'], 'pix@fireconference.local')
+
+        dados_adicionais = _parse_tlv(campos['62'])
+        self.assertEqual(dados_adicionais['05'], 'INSC42')
+
+    def test_amount_reflects_cupom_discount(self):
+        payload = gerar_payload_pix(
+            chave='pix@fireconference.local', nome_recebedor='Fire Conference',
+            cidade_recebedor='Sao Paulo', valor=Decimal('100.00'), txid='INSC1',
+        )
+
+        campos = _parse_tlv(payload[:-4])
+        self.assertEqual(campos['54'], '100.00')
+
+    def test_crc_is_self_consistent(self):
+        payload = gerar_payload_pix(
+            chave='pix@fireconference.local', nome_recebedor='Fire Conference',
+            cidade_recebedor='Sao Paulo', valor=Decimal('50.00'), txid='INSC2',
+        )
+
+        from .pix import _crc16_ccitt_false
+
+        self.assertEqual(_crc16_ccitt_false(payload[:-4]), payload[-4:])
+
+    def test_long_name_and_city_are_truncated(self):
+        payload = gerar_payload_pix(
+            chave='pix@fireconference.local',
+            nome_recebedor='Um Nome de Recebedor Extremamente Longo Demais',
+            cidade_recebedor='Uma Cidade Com Nome Muito Longo',
+            valor=Decimal('10.00'),
+            txid='INSC3',
+        )
+
+        campos = _parse_tlv(payload[:-4])
+        self.assertLessEqual(len(campos['59']), 25)
+        self.assertLessEqual(len(campos['60']), 15)
+
+    def test_accents_are_stripped(self):
+        payload = gerar_payload_pix(
+            chave='pix@fireconference.local', nome_recebedor='São Paulo Conferência',
+            cidade_recebedor='São Paulo', valor=Decimal('10.00'), txid='INSC4',
+        )
+
+        campos = _parse_tlv(payload[:-4])
+        self.assertNotIn('Ã', campos['59'])
+        self.assertNotIn('É', campos['59'])

@@ -14,6 +14,18 @@ export function InscricaoStatusPage() {
   const { token } = useParams<{ token: string }>()
   const [inscricao, setInscricao] = useState<InscricaoStatus | null>(null)
   const [notFound, setNotFound] = useState(false)
+  const [copiado, setCopiado] = useState(false)
+
+  async function copiarPayload() {
+    if (!inscricao) return
+    try {
+      await navigator.clipboard.writeText(inscricao.pix_payload)
+      setCopiado(true)
+      setTimeout(() => setCopiado(false), 2000)
+    } catch {
+      // Sem permissão de clipboard: o texto já está selecionável na caixa acima.
+    }
+  }
 
   useEffect(() => {
     api
@@ -38,6 +50,12 @@ export function InscricaoStatusPage() {
       {inscricao.cupom && <p>Cupom: {inscricao.cupom}</p>}
       <p>Valor: R$ {inscricao.preco_final}</p>
       <p>Status: {STATUS_LABEL[inscricao.status]}</p>
+
+      <h2>Pix copia e cola</h2>
+      <textarea readOnly value={inscricao.pix_payload} rows={4} />
+      <button type="button" onClick={copiarPayload}>
+        {copiado ? 'Copiado!' : 'Copiar código Pix'}
+      </button>
     </>
   )
 }

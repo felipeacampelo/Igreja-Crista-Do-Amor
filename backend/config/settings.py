@@ -120,6 +120,12 @@ CORS_ALLOWED_ORIGINS = config(
     cast=Csv(),
 )
 
+# Pix copia-e-cola (ADR-0001) — placeholders para dev/teste local.
+# PRECISA ser configurado com a chave Pix real da igreja antes de qualquer deploy.
+PIX_KEY = config('PIX_KEY', default='chave-pix-nao-configurada@example.com')
+PIX_MERCHANT_NAME = config('PIX_MERCHANT_NAME', default='FIRE CONFERENCE')
+PIX_MERCHANT_CITY = config('PIX_MERCHANT_CITY', default='SAO PAULO')
+
 REST_FRAMEWORK = {
     'DEFAULT_PERMISSION_CLASSES': [
         'rest_framework.permissions.AllowAny',

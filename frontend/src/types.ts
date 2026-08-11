@@ -12,4 +12,5 @@ export type InscricaoStatus = {
   status: 'pendente' | 'comprovante_enviado' | 'confirmada' | 'rejeitada'
   preco_final: string
   criado_em: string
+  pix_payload: string
 }
