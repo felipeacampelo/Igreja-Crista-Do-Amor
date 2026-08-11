@@ -2,26 +2,29 @@ import { useEffect, useState } from 'react'
 import { api } from './services/api'
 import './App.css'
 
-type HealthStatus = 'loading' | 'healthy' | 'unhealthy'
+type HealthCheckResult = {
+  status: string
+  database: string
+}
 
 function App() {
-  const [status, setStatus] = useState<HealthStatus>('loading')
+  const [health, setHealth] = useState<HealthCheckResult | null>(null)
+  const [failed, setFailed] = useState(false)
 
   useEffect(() => {
     api
-      .get('/api/health/')
-      .then(() => setStatus('healthy'))
-      .catch(() => setStatus('unhealthy'))
+      .get<HealthCheckResult>('/api/health/')
+      .then((response) => setHealth(response.data))
+      .catch(() => setFailed(true))
   }, [])
 
   return (
     <>
       <h1>Fire Conference</h1>
       <p>
-        Backend status:{' '}
-        {status === 'loading' && 'checking...'}
-        {status === 'healthy' && 'healthy ✓'}
-        {status === 'unhealthy' && 'unhealthy ✗'}
+        {!health && !failed && 'Checking backend status...'}
+        {health && `Backend: ${health.status}, database: ${health.database}`}
+        {failed && 'Backend unreachable'}
       </p>
     </>
   )
