@@ -52,10 +52,14 @@ class Inscricao(models.Model):
         FORMULARIO = 'formulario', 'Formulário'
         IMPORTACAO = 'importacao', 'Importação'
 
+    class Sexo(models.TextChoices):
+        MASCULINO = 'M', 'Masculino'
+        FEMININO = 'F', 'Feminino'
+
     nome_completo = models.CharField('Nome completo', max_length=200)
     cpf = models.CharField('CPF', max_length=14)
     email = models.EmailField('E-mail')
-    sexo = models.CharField('Sexo', max_length=1, choices=[('M', 'Masculino'), ('F', 'Feminino')])
+    sexo = models.CharField('Sexo', max_length=1, choices=Sexo.choices)
     data_nascimento = models.DateField('Data de nascimento')
     celular = models.CharField('Celular', max_length=20)
 

@@ -1,7 +1,10 @@
 from datetime import date
 from decimal import Decimal
 
+from django.db import transaction
 from rest_framework import serializers
+
+from apps.lotes.models import Lote
 
 from .models import Cupom, Inscricao
 
@@ -56,9 +59,23 @@ class InscricaoCreateSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         lote = validated_data['lote']
         cupom = validated_data.get('cupom')
-        desconto = cupom.valor_desconto if cupom else Decimal('0')
-        validated_data['preco_final'] = max(lote.preco - desconto, Decimal('0'))
-        return Inscricao.objects.create(**validated_data)
+
+        # Re-checa esgotamento sob lock: a validação acima já rejeitou o caso óbvio,
+        # mas sem isso duas submissões concorrentes perto do limite poderiam passar
+        # ambas na validação e furar o limite de vagas/usos.
+        with transaction.atomic():
+            lote_travado = Lote.objects.select_for_update().get(pk=lote.pk)
+            if lote_travado.esgotado:
+                raise serializers.ValidationError({'lote': 'Lote esgotado.'})
+
+            if cupom:
+                cupom_travado = Cupom.objects.select_for_update().get(pk=cupom.pk)
+                if cupom_travado.esgotado:
+                    raise serializers.ValidationError({'cupom_codigo': 'Cupom esgotado.'})
+
+            desconto = cupom.valor_desconto if cupom else Decimal('0')
+            validated_data['preco_final'] = max(lote.preco - desconto, Decimal('0'))
+            return Inscricao.objects.create(**validated_data)
 
 
 class InscricaoStatusSerializer(serializers.ModelSerializer):
