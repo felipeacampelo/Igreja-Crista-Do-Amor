@@ -77,6 +77,7 @@ class Inscricao(models.Model):
     origem = models.CharField('Origem', max_length=20, choices=Origem.choices, default=Origem.FORMULARIO)
     token = models.CharField(max_length=40, default=gerar_token, unique=True, editable=False)
     comprovante_path = models.CharField('Caminho do comprovante', max_length=255, blank=True)
+    motivo_rejeicao = models.CharField('Motivo da rejeição', max_length=500, blank=True)
 
     criado_em = models.DateTimeField('Criado em', auto_now_add=True)
     atualizado_em = models.DateTimeField('Atualizado em', auto_now=True)

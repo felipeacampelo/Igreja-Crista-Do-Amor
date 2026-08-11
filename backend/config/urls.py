@@ -7,4 +7,5 @@ urlpatterns = [
     path('api/lotes/', include('apps.lotes.urls')),
     path('api/auth/', include('apps.users.urls')),
     path('api/inscricoes/', include('apps.inscricoes.urls')),
+    path('api/admin/inscricoes/', include('apps.inscricoes.admin_urls')),
 ]

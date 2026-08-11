@@ -2,6 +2,8 @@ from datetime import date, timedelta
 from decimal import Decimal
 from unittest.mock import patch
 
+from django.contrib.auth import get_user_model
+from django.contrib.auth.models import Permission
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase
 from rest_framework import status
@@ -12,6 +14,8 @@ from apps.lotes.models import Lote
 from .models import Cupom, Inscricao
 from .pix import gerar_payload_pix
 from .storage import UploadComprovanteError
+
+User = get_user_model()
 
 
 def data_nascimento_com_idade(idade):
@@ -340,3 +344,118 @@ class PixPayloadTests(TestCase):
         campos = _parse_tlv(payload[:-4])
         self.assertNotIn('Ã', campos['59'])
         self.assertNotIn('É', campos['59'])
+
+
+class AprovacaoPagamentoTests(APITestCase):
+    def setUp(self):
+        self.lote = Lote.objects.create(nome='Lote 1', preco=Decimal('150.00'), limite_vagas=10)
+        self.inscricao = Inscricao.objects.create(
+            nome_completo='Maria Silva', cpf='111', email='maria@example.com', sexo='F',
+            data_nascimento=data_nascimento_com_idade(25), celular='11999990000',
+            lote=self.lote, preco_final=Decimal('150.00'), status=Inscricao.Status.COMPROVANTE_ENVIADO,
+            comprovante_path='some-token/comprovante.png',
+        )
+
+        self.aprovador = User.objects.create_user(email='aprovador@fireconference.local', password='senha-forte-123')
+        self.aprovador.user_permissions.add(Permission.objects.get(codename='aprovar_pagamento'))
+
+        self.sem_permissao = User.objects.create_user(email='sem-permissao@fireconference.local', password='senha-forte-123')
+
+    def _auth(self, user):
+        self.client.force_authenticate(user=user)
+
+    @patch('apps.inscricoes.serializers.gerar_url_assinada')
+    def test_aprovador_sees_queue_with_comprovante_url(self, mock_url):
+        mock_url.return_value = 'https://signed.example.com/comprovante.png'
+        self._auth(self.aprovador)
+
+        response = self.client.get('/api/admin/inscricoes/fila-aprovacao/')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data), 1)
+        self.assertEqual(response.data[0]['nome_completo'], 'Maria Silva')
+        self.assertEqual(response.data[0]['preco_final'], '150.00')
+        self.assertEqual(response.data[0]['comprovante_url'], 'https://signed.example.com/comprovante.png')
+
+    def test_queue_excludes_other_statuses(self):
+        Inscricao.objects.create(
+            nome_completo='Pendente', cpf='222', email='pendente@example.com', sexo='F',
+            data_nascimento=data_nascimento_com_idade(25), celular='119999',
+            lote=self.lote, preco_final=Decimal('150.00'), status=Inscricao.Status.PENDENTE,
+        )
+        self._auth(self.aprovador)
+
+        response = self.client.get('/api/admin/inscricoes/fila-aprovacao/')
+
+        self.assertEqual(len(response.data), 1)
+
+    def test_user_without_permission_cannot_see_queue(self):
+        self._auth(self.sem_permissao)
+
+        response = self.client.get('/api/admin/inscricoes/fila-aprovacao/')
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_anonymous_cannot_see_queue(self):
+        response = self.client.get('/api/admin/inscricoes/fila-aprovacao/')
+
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    def test_aprovador_can_approve(self):
+        self._auth(self.aprovador)
+
+        response = self.client.post(f'/api/admin/inscricoes/{self.inscricao.id}/aprovar/')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.inscricao.refresh_from_db()
+        self.assertEqual(self.inscricao.status, Inscricao.Status.CONFIRMADA)
+
+    def test_aprovador_can_reject_with_reason(self):
+        self._auth(self.aprovador)
+
+        response = self.client.post(
+            f'/api/admin/inscricoes/{self.inscricao.id}/rejeitar/',
+            {'motivo': 'Comprovante ilegível'},
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.inscricao.refresh_from_db()
+        self.assertEqual(self.inscricao.status, Inscricao.Status.REJEITADA)
+        self.assertEqual(self.inscricao.motivo_rejeicao, 'Comprovante ilegível')
+
+    def test_rejection_reason_is_required(self):
+        self._auth(self.aprovador)
+
+        response = self.client.post(f'/api/admin/inscricoes/{self.inscricao.id}/rejeitar/', {})
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_rejection_reason_visible_on_public_status_page(self):
+        self._auth(self.aprovador)
+        self.client.post(
+            f'/api/admin/inscricoes/{self.inscricao.id}/rejeitar/',
+            {'motivo': 'Valor incorreto'},
+        )
+
+        response = self.client.get(f'/api/inscricoes/{self.inscricao.token}/')
+
+        self.assertEqual(response.data['status'], Inscricao.Status.REJEITADA)
+        self.assertEqual(response.data['motivo_rejeicao'], 'Valor incorreto')
+
+    def test_user_without_permission_cannot_approve(self):
+        self._auth(self.sem_permissao)
+
+        response = self.client.post(f'/api/admin/inscricoes/{self.inscricao.id}/aprovar/')
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.inscricao.refresh_from_db()
+        self.assertEqual(self.inscricao.status, Inscricao.Status.COMPROVANTE_ENVIADO)
+
+    def test_cannot_approve_inscricao_not_in_review_queue(self):
+        self.inscricao.status = Inscricao.Status.PENDENTE
+        self.inscricao.save()
+        self._auth(self.aprovador)
+
+        response = self.client.post(f'/api/admin/inscricoes/{self.inscricao.id}/aprovar/')
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)

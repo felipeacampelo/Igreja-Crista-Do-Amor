@@ -9,6 +9,7 @@ from apps.lotes.models import Lote
 
 from .models import Cupom, Inscricao
 from .pix import gerar_payload_pix
+from .storage import AssinaturaUrlError, gerar_url_assinada
 
 
 def _calcula_idade(data_nascimento, hoje=None):
@@ -102,7 +103,8 @@ class InscricaoStatusSerializer(serializers.ModelSerializer):
     class Meta:
         model = Inscricao
         fields = [
-            'nome_completo', 'lote', 'cupom', 'status', 'preco_final', 'criado_em', 'pix_payload',
+            'nome_completo', 'lote', 'cupom', 'status', 'preco_final', 'criado_em',
+            'pix_payload', 'motivo_rejeicao',
         ]
 
     def get_pix_payload(self, obj):
@@ -113,3 +115,28 @@ class InscricaoStatusSerializer(serializers.ModelSerializer):
             valor=obj.preco_final,
             txid=f'INSC{obj.id}',
         )
+
+
+class AdminInscricaoQueueSerializer(serializers.ModelSerializer):
+    lote = serializers.CharField(source='lote.nome', read_only=True)
+    cupom = serializers.CharField(source='cupom.codigo', read_only=True, allow_null=True)
+    comprovante_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Inscricao
+        fields = [
+            'id', 'nome_completo', 'cpf', 'email', 'celular', 'sexo', 'data_nascimento',
+            'lote', 'cupom', 'preco_final', 'status', 'comprovante_url', 'criado_em',
+        ]
+
+    def get_comprovante_url(self, obj):
+        if not obj.comprovante_path:
+            return None
+        try:
+            return gerar_url_assinada(obj.comprovante_path)
+        except AssinaturaUrlError:
+            return None
+
+
+class RejeitarInscricaoSerializer(serializers.Serializer):
+    motivo = serializers.CharField(max_length=500)

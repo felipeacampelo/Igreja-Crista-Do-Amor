@@ -5,8 +5,16 @@ from rest_framework.generics import get_object_or_404
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.users.permissions import PodeAprovarPagamento
+
 from .models import Inscricao
-from .serializers import ComprovanteUploadSerializer, InscricaoCreateSerializer, InscricaoStatusSerializer
+from .serializers import (
+    AdminInscricaoQueueSerializer,
+    ComprovanteUploadSerializer,
+    InscricaoCreateSerializer,
+    InscricaoStatusSerializer,
+    RejeitarInscricaoSerializer,
+)
 from .storage import UploadComprovanteError, upload_comprovante
 
 
@@ -50,3 +58,49 @@ class ComprovanteUploadView(APIView):
         inscricao.save(update_fields=['comprovante_path', 'status', 'atualizado_em'])
 
         return Response(InscricaoStatusSerializer(inscricao).data)
+
+
+class FilaAprovacaoView(generics.ListAPIView):
+    permission_classes = [PodeAprovarPagamento]
+    serializer_class = AdminInscricaoQueueSerializer
+    queryset = Inscricao.objects.filter(status=Inscricao.Status.COMPROVANTE_ENVIADO)
+
+
+class AprovarInscricaoView(APIView):
+    permission_classes = [PodeAprovarPagamento]
+
+    def post(self, request, pk):
+        inscricao = get_object_or_404(Inscricao, pk=pk)
+
+        if inscricao.status != Inscricao.Status.COMPROVANTE_ENVIADO:
+            return Response(
+                {'detail': 'Ação não permitida nesse status.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        inscricao.status = Inscricao.Status.CONFIRMADA
+        inscricao.save(update_fields=['status', 'atualizado_em'])
+
+        return Response(AdminInscricaoQueueSerializer(inscricao).data)
+
+
+class RejeitarInscricaoView(APIView):
+    permission_classes = [PodeAprovarPagamento]
+
+    def post(self, request, pk):
+        inscricao = get_object_or_404(Inscricao, pk=pk)
+
+        if inscricao.status != Inscricao.Status.COMPROVANTE_ENVIADO:
+            return Response(
+                {'detail': 'Ação não permitida nesse status.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        serializer = RejeitarInscricaoSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        inscricao.status = Inscricao.Status.REJEITADA
+        inscricao.motivo_rejeicao = serializer.validated_data['motivo']
+        inscricao.save(update_fields=['status', 'motivo_rejeicao', 'atualizado_em'])
+
+        return Response(AdminInscricaoQueueSerializer(inscricao).data)

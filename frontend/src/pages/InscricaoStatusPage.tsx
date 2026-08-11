@@ -74,6 +74,7 @@ export function InscricaoStatusPage() {
       {inscricao.cupom && <p>Cupom: {inscricao.cupom}</p>}
       <p>Valor: R$ {inscricao.preco_final}</p>
       <p>Status: {STATUS_LABEL[inscricao.status]}</p>
+      {inscricao.status === 'rejeitada' && <p>Motivo: {inscricao.motivo_rejeicao}</p>}
 
       <h2>Pix copia e cola</h2>
       <textarea readOnly value={inscricao.pix_payload} rows={4} />

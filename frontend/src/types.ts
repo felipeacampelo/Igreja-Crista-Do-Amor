@@ -13,4 +13,21 @@ export type InscricaoStatus = {
   preco_final: string
   criado_em: string
   pix_payload: string
+  motivo_rejeicao: string
+}
+
+export type InscricaoFilaAprovacao = {
+  id: number
+  nome_completo: string
+  cpf: string
+  email: string
+  celular: string
+  sexo: 'M' | 'F'
+  data_nascimento: string
+  lote: string
+  cupom: string | null
+  preco_final: string
+  status: string
+  comprovante_url: string | null
+  criado_em: string
 }
