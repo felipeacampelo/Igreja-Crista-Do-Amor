@@ -80,6 +80,20 @@ class InscricaoCreateSerializer(serializers.ModelSerializer):
             return Inscricao.objects.create(**validated_data)
 
 
+class ComprovanteUploadSerializer(serializers.Serializer):
+    ALLOWED_CONTENT_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf']
+    MAX_SIZE_BYTES = 10 * 1024 * 1024
+
+    arquivo = serializers.FileField()
+
+    def validate_arquivo(self, arquivo):
+        if arquivo.content_type not in self.ALLOWED_CONTENT_TYPES:
+            raise serializers.ValidationError('Envie uma imagem (JPEG, PNG ou WEBP) ou um PDF.')
+        if arquivo.size > self.MAX_SIZE_BYTES:
+            raise serializers.ValidationError('Arquivo maior que 10MB.')
+        return arquivo
+
+
 class InscricaoStatusSerializer(serializers.ModelSerializer):
     lote = serializers.CharField(source='lote.nome', read_only=True)
     cupom = serializers.CharField(source='cupom.codigo', read_only=True, allow_null=True)

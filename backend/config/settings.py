@@ -131,6 +131,16 @@ if not DEBUG and PIX_KEY == _PIX_KEY_PLACEHOLDER:
     from django.core.exceptions import ImproperlyConfigured
     raise ImproperlyConfigured('PIX_KEY não configurada — defina a chave Pix real antes de deployar.')
 
+# Supabase Storage (comprovantes) — usa a service_role key (bypassa RLS), nunca
+# exposta ao frontend. Buscar em Project Settings > API no painel do Supabase.
+SUPABASE_URL = config('SUPABASE_URL', default='')
+SUPABASE_SERVICE_ROLE_KEY = config('SUPABASE_SERVICE_ROLE_KEY', default='')
+SUPABASE_COMPROVANTES_BUCKET = 'comprovantes'
+
+if not DEBUG and not (SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY):
+    from django.core.exceptions import ImproperlyConfigured
+    raise ImproperlyConfigured('SUPABASE_URL/SUPABASE_SERVICE_ROLE_KEY não configurados.')
+
 REST_FRAMEWORK = {
     'DEFAULT_PERMISSION_CLASSES': [
         'rest_framework.permissions.AllowAny',

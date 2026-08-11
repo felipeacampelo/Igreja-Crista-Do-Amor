@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ChangeEvent } from 'react'
 import { useParams } from 'react-router-dom'
-import { api } from '../services/api'
+import { api, formatApiErrors } from '../services/api'
 import type { InscricaoStatus } from '../types'
 
 const STATUS_LABEL: Record<InscricaoStatus['status'], string> = {
@@ -15,6 +15,8 @@ export function InscricaoStatusPage() {
   const [inscricao, setInscricao] = useState<InscricaoStatus | null>(null)
   const [notFound, setNotFound] = useState(false)
   const [copiado, setCopiado] = useState(false)
+  const [enviando, setEnviando] = useState(false)
+  const [uploadErrors, setUploadErrors] = useState<string[]>([])
 
   async function copiarPayload() {
     if (!inscricao) return
@@ -24,6 +26,28 @@ export function InscricaoStatusPage() {
       setTimeout(() => setCopiado(false), 2000)
     } catch {
       // Sem permissão de clipboard: o texto já está selecionável na caixa acima.
+    }
+  }
+
+  async function enviarComprovante(event: ChangeEvent<HTMLInputElement>) {
+    const arquivo = event.target.files?.[0]
+    if (!arquivo) return
+
+    setUploadErrors([])
+    setEnviando(true)
+
+    const dados = new FormData()
+    dados.append('arquivo', arquivo)
+
+    try {
+      const response = await api.post<InscricaoStatus>(`/api/inscricoes/${token}/comprovante/`, dados)
+      setInscricao(response.data)
+    } catch (error: unknown) {
+      const data = (error as { response?: { data?: unknown } })?.response?.data
+      setUploadErrors(formatApiErrors(data))
+    } finally {
+      setEnviando(false)
+      event.target.value = ''
     }
   }
 
@@ -56,6 +80,27 @@ export function InscricaoStatusPage() {
       <button type="button" onClick={copiarPayload}>
         {copiado ? 'Copiado!' : 'Copiar código Pix'}
       </button>
+
+      {inscricao.status === 'pendente' && (
+        <>
+          <h2>Comprovante de pagamento</h2>
+          <p>Anexe uma imagem ou PDF do comprovante do pagamento Pix.</p>
+          <input
+            type="file"
+            accept="image/jpeg,image/png,image/webp,application/pdf"
+            onChange={enviarComprovante}
+            disabled={enviando}
+          />
+          {enviando && <p>Enviando...</p>}
+          {uploadErrors.length > 0 && (
+            <ul>
+              {uploadErrors.map((error) => (
+                <li key={error}>{error}</li>
+              ))}
+            </ul>
+          )}
+        </>
+      )}
     </>
   )
 }

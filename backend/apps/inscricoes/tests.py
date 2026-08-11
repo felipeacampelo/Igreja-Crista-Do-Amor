@@ -1,6 +1,8 @@
 from datetime import date, timedelta
 from decimal import Decimal
+from unittest.mock import patch
 
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase
 from rest_framework import status
 from rest_framework.test import APITestCase
@@ -9,6 +11,7 @@ from apps.lotes.models import Lote
 
 from .models import Cupom, Inscricao
 from .pix import gerar_payload_pix
+from .storage import UploadComprovanteError
 
 
 def data_nascimento_com_idade(idade):
@@ -140,6 +143,110 @@ class InscricaoStatusTests(APITestCase):
         response = self.client.get(f'/api/inscricoes/{self.inscricao.token}/')
 
         self.assertTrue(response.data['pix_payload'].startswith('000201'))
+
+
+class ComprovanteUploadTests(APITestCase):
+    def setUp(self):
+        self.lote = Lote.objects.create(nome='Lote 1', preco=Decimal('150.00'), limite_vagas=10)
+        self.inscricao = Inscricao.objects.create(
+            nome_completo='Maria Silva', cpf='111', email='maria@example.com', sexo='F',
+            data_nascimento=data_nascimento_com_idade(25), celular='11999990000',
+            lote=self.lote, preco_final=Decimal('150.00'),
+        )
+
+    def _arquivo(self, nome='comprovante.png', tipo='image/png', conteudo=b'fake-image-bytes'):
+        return SimpleUploadedFile(nome, conteudo, content_type=tipo)
+
+    @patch('apps.inscricoes.views.upload_comprovante')
+    def test_upload_transitions_status_and_stores_path(self, mock_upload):
+        mock_upload.return_value = 'caminho/fake.png'
+
+        response = self.client.post(
+            f'/api/inscricoes/{self.inscricao.token}/comprovante/',
+            {'arquivo': self._arquivo()},
+            format='multipart',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['status'], Inscricao.Status.COMPROVANTE_ENVIADO)
+        self.inscricao.refresh_from_db()
+        self.assertEqual(self.inscricao.status, Inscricao.Status.COMPROVANTE_ENVIADO)
+        self.assertTrue(self.inscricao.comprovante_path)
+        mock_upload.assert_called_once()
+
+    @patch('apps.inscricoes.views.upload_comprovante')
+    def test_accepts_pdf(self, mock_upload):
+        response = self.client.post(
+            f'/api/inscricoes/{self.inscricao.token}/comprovante/',
+            {'arquivo': self._arquivo(nome='comprovante.pdf', tipo='application/pdf')},
+            format='multipart',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+    @patch('apps.inscricoes.views.upload_comprovante')
+    def test_rejects_disallowed_file_type(self, mock_upload):
+        response = self.client.post(
+            f'/api/inscricoes/{self.inscricao.token}/comprovante/',
+            {'arquivo': self._arquivo(nome='comprovante.txt', tipo='text/plain')},
+            format='multipart',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        mock_upload.assert_not_called()
+        self.inscricao.refresh_from_db()
+        self.assertEqual(self.inscricao.status, Inscricao.Status.PENDENTE)
+
+    @patch('apps.inscricoes.views.upload_comprovante')
+    def test_rejects_file_too_large(self, mock_upload):
+        arquivo_grande = self._arquivo(conteudo=b'x' * (10 * 1024 * 1024 + 1))
+
+        response = self.client.post(
+            f'/api/inscricoes/{self.inscricao.token}/comprovante/',
+            {'arquivo': arquivo_grande},
+            format='multipart',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        mock_upload.assert_not_called()
+
+    @patch('apps.inscricoes.views.upload_comprovante')
+    def test_rejects_upload_when_not_pendente(self, mock_upload):
+        self.inscricao.status = Inscricao.Status.CONFIRMADA
+        self.inscricao.save()
+
+        response = self.client.post(
+            f'/api/inscricoes/{self.inscricao.token}/comprovante/',
+            {'arquivo': self._arquivo()},
+            format='multipart',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        mock_upload.assert_not_called()
+
+    @patch('apps.inscricoes.views.upload_comprovante')
+    def test_storage_failure_does_not_change_status(self, mock_upload):
+        mock_upload.side_effect = UploadComprovanteError('boom')
+
+        response = self.client.post(
+            f'/api/inscricoes/{self.inscricao.token}/comprovante/',
+            {'arquivo': self._arquivo()},
+            format='multipart',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_502_BAD_GATEWAY)
+        self.inscricao.refresh_from_db()
+        self.assertEqual(self.inscricao.status, Inscricao.Status.PENDENTE)
+        self.assertEqual(self.inscricao.comprovante_path, '')
+
+    def test_upload_to_unknown_token_returns_404(self):
+        response = self.client.post(
+            '/api/inscricoes/token-que-nao-existe/comprovante/',
+            {'arquivo': self._arquivo()},
+            format='multipart',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
 
 def _parse_tlv(payload):

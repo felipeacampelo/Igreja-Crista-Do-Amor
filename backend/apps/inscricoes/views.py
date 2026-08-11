@@ -1,7 +1,13 @@
-from rest_framework import generics
+import os
+
+from rest_framework import generics, status
+from rest_framework.generics import get_object_or_404
+from rest_framework.response import Response
+from rest_framework.views import APIView
 
 from .models import Inscricao
-from .serializers import InscricaoCreateSerializer, InscricaoStatusSerializer
+from .serializers import ComprovanteUploadSerializer, InscricaoCreateSerializer, InscricaoStatusSerializer
+from .storage import UploadComprovanteError, upload_comprovante
 
 
 class InscricaoCreateView(generics.CreateAPIView):
@@ -12,3 +18,35 @@ class InscricaoDetailView(generics.RetrieveAPIView):
     queryset = Inscricao.objects.all()
     serializer_class = InscricaoStatusSerializer
     lookup_field = 'token'
+
+
+class ComprovanteUploadView(APIView):
+    def post(self, request, token):
+        inscricao = get_object_or_404(Inscricao, token=token)
+
+        if inscricao.status != Inscricao.Status.PENDENTE:
+            return Response(
+                {'detail': 'Comprovante só pode ser enviado enquanto a inscrição está pendente.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        serializer = ComprovanteUploadSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        arquivo = serializer.validated_data['arquivo']
+
+        extensao = os.path.splitext(arquivo.name)[1].lower()
+        caminho = f'{inscricao.token}/comprovante{extensao}'
+
+        try:
+            upload_comprovante(caminho, arquivo)
+        except UploadComprovanteError:
+            return Response(
+                {'detail': 'Não foi possível enviar o comprovante. Tente novamente.'},
+                status=status.HTTP_502_BAD_GATEWAY,
+            )
+
+        inscricao.comprovante_path = caminho
+        inscricao.status = Inscricao.Status.COMPROVANTE_ENVIADO
+        inscricao.save(update_fields=['comprovante_path', 'status', 'atualizado_em'])
+
+        return Response(InscricaoStatusSerializer(inscricao).data)
