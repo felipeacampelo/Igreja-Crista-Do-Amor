@@ -23,12 +23,16 @@ INSTALLED_APPS = [
 
     # Third party
     'rest_framework',
+    'rest_framework.authtoken',
     'corsheaders',
 
     # Local apps
     'apps.core',
     'apps.lotes',
+    'apps.users',
 ]
+
+AUTH_USER_MODEL = 'users.User'
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
@@ -118,5 +122,8 @@ CORS_ALLOWED_ORIGINS = config(
 REST_FRAMEWORK = {
     'DEFAULT_PERMISSION_CLASSES': [
         'rest_framework.permissions.AllowAny',
+    ],
+    'DEFAULT_AUTHENTICATION_CLASSES': [
+        'rest_framework.authentication.TokenAuthentication',
     ],
 }
