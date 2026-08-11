@@ -518,6 +518,15 @@ class IngressoTests(APITestCase):
 
         self.assertEqual(resolvido.id, self.inscricao.id)
 
+    def test_tampered_token_is_rejected(self):
+        from django.core import signing
+
+        token = build_ingresso_token(self.inscricao)
+        adulterado = token[:-1] + ('a' if token[-1] != 'a' else 'b')
+
+        with self.assertRaises(signing.BadSignature):
+            resolve_ingresso_token(adulterado)
+
     def test_download_returns_pdf_when_confirmada(self):
         response = self.client.get(f'/api/inscricoes/{self.inscricao.token}/ingresso/')
 
@@ -531,7 +540,7 @@ class IngressoTests(APITestCase):
 
         response = self.client.get(f'/api/inscricoes/{self.inscricao.token}/ingresso/')
 
-        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
     def test_download_unknown_token_returns_404(self):
         response = self.client.get('/api/inscricoes/token-que-nao-existe/ingresso/')

@@ -27,12 +27,12 @@ def resolve_ingresso_token(token):
 
 
 def build_ingresso_pdf_bytes(inscricao):
-    width, height = A6
+    width, height = A6  # cartão pequeno (~105x148mm), suficiente para um ingresso individual
     buffer = BytesIO()
     c = pdf_canvas.Canvas(buffer, pagesize=A6)
 
     text_x = 10 * mm
-    y = height - 15 * mm
+    y = height - 15 * mm  # começa perto do topo, desce conforme desenha cada linha
 
     c.setFont('Helvetica-Bold', 16)
     c.drawString(text_x, y, 'Fire Conference')
@@ -42,9 +42,11 @@ def build_ingresso_pdf_bytes(inscricao):
     c.drawString(text_x, y, inscricao.nome_completo)
     y -= 8 * mm
 
+    # Cada label ocupa uma linha pequena acima do valor em negrito, formando um bloco de ~11mm.
     for label, valor in (
         ('Lote', inscricao.lote.nome),
         ('CPF', inscricao.cpf),
+        ('Celular', inscricao.celular),
     ):
         c.setFont('Helvetica', 8)
         c.drawString(text_x, y, label.upper())
@@ -57,7 +59,7 @@ def build_ingresso_pdf_bytes(inscricao):
     qr_image.save(qr_buffer, format='PNG')
     qr_buffer.seek(0)
     qr_size = 45 * mm
-    c.drawImage(ImageReader(qr_buffer), (width - qr_size) / 2, 10 * mm, width=qr_size, height=qr_size)
+    c.drawImage(ImageReader(qr_buffer), (width - qr_size) / 2, 10 * mm, width=qr_size, height=qr_size)  # centralizado
 
     c.setFont('Helvetica', 6.5)
     c.drawCentredString(width / 2, 6 * mm, 'Apresente este QR code na entrada.')

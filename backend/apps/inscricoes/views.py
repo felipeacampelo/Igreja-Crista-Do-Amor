@@ -120,10 +120,11 @@ class IngressoDownloadView(APIView):
         if inscricao.status != Inscricao.Status.CONFIRMADA:
             return Response(
                 {'detail': 'Ingresso disponível apenas para inscrições confirmadas.'},
-                status=status.HTTP_404_NOT_FOUND,
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
         pdf_bytes = build_ingresso_pdf_bytes(inscricao)
         response = HttpResponse(pdf_bytes, content_type='application/pdf')
-        response['Content-Disposition'] = 'attachment; filename="ingresso.pdf"'
+        # inline (não attachment) para permitir visualização no navegador, além de download.
+        response['Content-Disposition'] = 'inline; filename="ingresso.pdf"'
         return response
