@@ -25,8 +25,10 @@ class Lote(models.Model):
 
     @property
     def vagas_ocupadas(self):
-        # Inscrição ainda não existe (issue #5) — sem inscrições vinculadas, sempre 0 por ora.
-        return 0
+        # Import local para evitar import circular: apps.inscricoes já importa Lote.
+        from apps.inscricoes.models import Inscricao
+
+        return self.inscricoes.exclude(status=Inscricao.Status.REJEITADA).count()
 
     @property
     def vagas_restantes(self):

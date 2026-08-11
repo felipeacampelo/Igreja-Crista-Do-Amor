@@ -30,6 +30,7 @@ INSTALLED_APPS = [
     'apps.core',
     'apps.lotes',
     'apps.users',
+    'apps.inscricoes',
 ]
 
 AUTH_USER_MODEL = 'users.User'

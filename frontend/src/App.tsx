@@ -1,32 +1,16 @@
-import { useEffect, useState } from 'react'
-import { api } from './services/api'
+import { BrowserRouter, Route, Routes } from 'react-router-dom'
+import { InscricaoForm } from './pages/InscricaoForm'
+import { InscricaoStatusPage } from './pages/InscricaoStatusPage'
 import './App.css'
 
-type HealthCheckResult = {
-  status: string
-  database: string
-}
-
 function App() {
-  const [health, setHealth] = useState<HealthCheckResult | null>(null)
-  const [failed, setFailed] = useState(false)
-
-  useEffect(() => {
-    api
-      .get<HealthCheckResult>('/api/health/')
-      .then((response) => setHealth(response.data))
-      .catch(() => setFailed(true))
-  }, [])
-
   return (
-    <>
-      <h1>Fire Conference</h1>
-      <p>
-        {!health && !failed && 'Checking backend status...'}
-        {health && `Backend: ${health.status}, database: ${health.database}`}
-        {failed && 'Backend unreachable'}
-      </p>
-    </>
+    <BrowserRouter>
+      <Routes>
+        <Route path="/" element={<InscricaoForm />} />
+        <Route path="/inscricao/:token" element={<InscricaoStatusPage />} />
+      </Routes>
+    </BrowserRouter>
   )
 }
 
