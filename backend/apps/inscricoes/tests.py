@@ -365,6 +365,25 @@ class AprovacaoPagamentoTests(APITestCase):
         self.client.force_authenticate(user=user)
 
     @patch('apps.inscricoes.serializers.gerar_url_assinada')
+    def test_real_login_token_grants_queue_access_end_to_end(self, mock_url):
+        # force_authenticate (used elsewhere in this class) proves the permission
+        # class works, but skips real token auth — this proves a token obtained
+        # from the actual login endpoint (#4) actually works against this route.
+        # The Supabase call itself is mocked here too — already covered separately.
+        mock_url.return_value = 'https://signed.example.com/comprovante.png'
+
+        login_response = self.client.post('/api/auth/login/', {
+            'email': 'aprovador@fireconference.local',
+            'password': 'senha-forte-123',
+        })
+        token = login_response.data['token']
+
+        self.client.credentials(HTTP_AUTHORIZATION=f'Token {token}')
+        response = self.client.get('/api/admin/inscricoes/fila-aprovacao/')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+    @patch('apps.inscricoes.serializers.gerar_url_assinada')
     def test_aprovador_sees_queue_with_comprovante_url(self, mock_url):
         mock_url.return_value = 'https://signed.example.com/comprovante.png'
         self._auth(self.aprovador)

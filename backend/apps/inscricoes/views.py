@@ -66,17 +66,24 @@ class FilaAprovacaoView(generics.ListAPIView):
     queryset = Inscricao.objects.filter(status=Inscricao.Status.COMPROVANTE_ENVIADO)
 
 
+def _inscricao_em_revisao_ou_erro(pk):
+    """Carrega a inscrição ou devolve a Response de erro a retornar direto pela view."""
+    inscricao = get_object_or_404(Inscricao, pk=pk)
+    if inscricao.status != Inscricao.Status.COMPROVANTE_ENVIADO:
+        return None, Response(
+            {'detail': 'Ação não permitida nesse status.'},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    return inscricao, None
+
+
 class AprovarInscricaoView(APIView):
     permission_classes = [PodeAprovarPagamento]
 
     def post(self, request, pk):
-        inscricao = get_object_or_404(Inscricao, pk=pk)
-
-        if inscricao.status != Inscricao.Status.COMPROVANTE_ENVIADO:
-            return Response(
-                {'detail': 'Ação não permitida nesse status.'},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+        inscricao, erro = _inscricao_em_revisao_ou_erro(pk)
+        if erro:
+            return erro
 
         inscricao.status = Inscricao.Status.CONFIRMADA
         inscricao.save(update_fields=['status', 'atualizado_em'])
@@ -88,13 +95,9 @@ class RejeitarInscricaoView(APIView):
     permission_classes = [PodeAprovarPagamento]
 
     def post(self, request, pk):
-        inscricao = get_object_or_404(Inscricao, pk=pk)
-
-        if inscricao.status != Inscricao.Status.COMPROVANTE_ENVIADO:
-            return Response(
-                {'detail': 'Ação não permitida nesse status.'},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+        inscricao, erro = _inscricao_em_revisao_ou_erro(pk)
+        if erro:
+            return erro
 
         serializer = RejeitarInscricaoSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)

@@ -2,10 +2,17 @@ import { useEffect, useState } from 'react'
 import { api, formatApiErrors } from '../services/api'
 import type { InscricaoFilaAprovacao } from '../types'
 
+const SEXO_LABEL: Record<InscricaoFilaAprovacao['sexo'], string> = {
+  F: 'Feminino',
+  M: 'Masculino',
+}
+
 export function AdminFilaAprovacaoPage() {
   const [fila, setFila] = useState<InscricaoFilaAprovacao[] | null>(null)
   const [semPermissao, setSemPermissao] = useState(false)
   const [erros, setErros] = useState<Record<number, string[]>>({})
+  const [rejeitando, setRejeitando] = useState<Record<number, boolean>>({})
+  const [motivos, setMotivos] = useState<Record<number, string>>({})
 
   function carregarFila() {
     api
@@ -33,9 +40,12 @@ export function AdminFilaAprovacaoPage() {
     }
   }
 
-  async function rejeitar(id: number) {
-    const motivo = window.prompt('Motivo da rejeição:')
-    if (!motivo) return
+  async function confirmarRejeicao(id: number) {
+    const motivo = (motivos[id] ?? '').trim()
+    if (!motivo) {
+      setErros((prev) => ({ ...prev, [id]: ['Informe o motivo da rejeição.'] }))
+      return
+    }
 
     setErros((prev) => ({ ...prev, [id]: [] }))
     try {
@@ -64,6 +74,9 @@ export function AdminFilaAprovacaoPage() {
           <p>Nome: {inscricao.nome_completo}</p>
           <p>CPF: {inscricao.cpf}</p>
           <p>E-mail: {inscricao.email}</p>
+          <p>Celular: {inscricao.celular}</p>
+          <p>Sexo: {SEXO_LABEL[inscricao.sexo]}</p>
+          <p>Data de nascimento: {inscricao.data_nascimento}</p>
           <p>Lote: {inscricao.lote}</p>
           {inscricao.cupom && <p>Cupom: {inscricao.cupom}</p>}
           <p>Valor esperado: R$ {inscricao.preco_final}</p>
@@ -76,12 +89,32 @@ export function AdminFilaAprovacaoPage() {
           ) : (
             <p>Comprovante indisponível no momento.</p>
           )}
+
           <button type="button" onClick={() => aprovar(inscricao.id)}>
             Aprovar
           </button>
-          <button type="button" onClick={() => rejeitar(inscricao.id)}>
+          <button
+            type="button"
+            onClick={() => setRejeitando((prev) => ({ ...prev, [inscricao.id]: true }))}
+          >
             Rejeitar
           </button>
+
+          {rejeitando[inscricao.id] && (
+            <div>
+              <label>
+                Motivo da rejeição
+                <input
+                  value={motivos[inscricao.id] ?? ''}
+                  onChange={(e) => setMotivos((prev) => ({ ...prev, [inscricao.id]: e.target.value }))}
+                />
+              </label>
+              <button type="button" onClick={() => confirmarRejeicao(inscricao.id)}>
+                Confirmar rejeição
+              </button>
+            </div>
+          )}
+
           {erros[inscricao.id]?.length > 0 && (
             <ul>
               {erros[inscricao.id].map((erro) => (
