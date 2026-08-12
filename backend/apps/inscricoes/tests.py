@@ -790,6 +790,31 @@ class ImportacaoPlanilhaTests(TestCase):
         self.assertFalse(Inscricao.objects.filter(cpf='111.111.111-11').exists())
         self.assertEqual(len(mail.outbox), 0)
 
+    def test_dry_run_accounts_for_lote_capacity_used_by_earlier_rows_in_same_batch(self):
+        # limite_vagas=2: como nada é gravado num dry-run, lote.esgotado (calculado
+        # do banco) não veria essas linhas sozinho — sem o contador em memória, as
+        # 3 linhas passariam como válidas mesmo violando o limite do lote.
+        resultado = importar_linhas([
+            self._linha(cpf='111', email='um@example.com'),
+            self._linha(cpf='222', email='dois@example.com'),
+            self._linha(cpf='333', email='tres@example.com'),
+        ], dry_run=True)
+
+        self.assertEqual(resultado.importadas, 2)
+        self.assertEqual(resultado.com_erro, 1)
+        self.assertEqual(Inscricao.objects.count(), 0)  # dry-run: nada foi gravado
+
+    def test_dry_run_accounts_for_cupom_limit_used_by_earlier_rows_in_same_batch(self):
+        Cupom.objects.create(codigo='SERVIR', valor_desconto=Decimal('50.00'), limite_usos=1)
+
+        resultado = importar_linhas([
+            self._linha(cpf='111', email='um@example.com', cupom_codigo='servir'),
+            self._linha(cpf='222', email='dois@example.com', cupom_codigo='servir'),
+        ], dry_run=True)
+
+        self.assertEqual(resultado.importadas, 1)
+        self.assertEqual(resultado.com_erro, 1)
+
     def test_management_command_reads_csv_file_end_to_end(self):
         with tempfile.NamedTemporaryFile(mode='w', suffix='.csv', delete=False, newline='') as arquivo:
             arquivo.write(
