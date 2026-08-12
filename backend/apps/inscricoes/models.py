@@ -11,6 +11,17 @@ def gerar_token():
     return secrets.token_urlsafe(24)
 
 
+# Sem 0/O/1/I/L: caracteres que se confundem na digitação manual no check-in.
+CODIGO_CHECKIN_ALFABETO = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'
+
+
+def gerar_codigo_checkin():
+    while True:
+        codigo = ''.join(secrets.choice(CODIGO_CHECKIN_ALFABETO) for _ in range(6))
+        if not Inscricao.objects.filter(codigo_checkin=codigo).exists():
+            return codigo
+
+
 class Cupom(models.Model):
     codigo = models.CharField('Código', max_length=50, unique=True)
     valor_desconto = models.DecimalField(
@@ -77,6 +88,11 @@ class Inscricao(models.Model):
     status = models.CharField('Status', max_length=20, choices=Status.choices, default=Status.PENDENTE)
     origem = models.CharField('Origem', max_length=20, choices=Origem.choices, default=Origem.FORMULARIO)
     token = models.CharField(max_length=40, default=gerar_token, unique=True, editable=False)
+    # Código curto para digitar manualmente no check-in — 'token' é longo demais
+    # para isso (é usado no link público da inscrição, precisa ser difícil de adivinhar).
+    # Gerado em save() (não via default=), pois a geração consulta o banco para
+    # garantir unicidade e um default de campo não pode fazer isso com segurança.
+    codigo_checkin = models.CharField('Código de check-in', max_length=6, unique=True, editable=False)
     comprovante_path = models.CharField('Caminho do comprovante', max_length=255, blank=True)
     motivo_rejeicao = models.CharField('Motivo da rejeição', max_length=500, blank=True)
 
@@ -99,6 +115,11 @@ class Inscricao(models.Model):
 
     def __str__(self):
         return f'{self.nome_completo} - {self.lote.nome}'
+
+    def save(self, *args, **kwargs):
+        if not self.codigo_checkin:
+            self.codigo_checkin = gerar_codigo_checkin()
+        super().save(*args, **kwargs)
 
 
 class CheckinAuditLog(models.Model):

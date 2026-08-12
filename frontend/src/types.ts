@@ -14,6 +14,7 @@ export type InscricaoStatus = {
   criado_em: string
   pix_payload: string
   motivo_rejeicao: string
+  codigo_checkin: string
 }
 
 export type InscricaoFilaAprovacao = {

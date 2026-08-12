@@ -50,6 +50,8 @@ class InscricaoCreateTests(APITestCase):
         self.assertEqual(inscricao.origem, Inscricao.Origem.FORMULARIO)
         self.assertEqual(inscricao.preco_final, Decimal('150.00'))
         self.assertEqual(inscricao.lote, self.lote)
+        self.assertEqual(len(inscricao.codigo_checkin), 6)
+        self.assertTrue(set(inscricao.codigo_checkin) <= set('ABCDEFGHJKMNPQRSTUVWXYZ23456789'))
 
     def test_menor_de_idade_requires_responsavel(self):
         response = self.client.post('/api/inscricoes/', self.payload(
@@ -148,6 +150,11 @@ class InscricaoStatusTests(APITestCase):
         response = self.client.get(f'/api/inscricoes/{self.inscricao.token}/')
 
         self.assertTrue(response.data['pix_payload'].startswith('000201'))
+
+    def test_status_response_includes_codigo_checkin(self):
+        response = self.client.get(f'/api/inscricoes/{self.inscricao.token}/')
+
+        self.assertEqual(response.data['codigo_checkin'], self.inscricao.codigo_checkin)
 
 
 class ComprovanteUploadTests(APITestCase):
@@ -552,7 +559,7 @@ class CheckinTests(APITestCase):
     def test_manual_checkin_aceita_valid_unused_ingresso(self):
         self._auth(self.checkin_staff)
 
-        response = self.client.post('/api/admin/checkin/manual/', {'codigo': self.inscricao.token})
+        response = self.client.post('/api/admin/checkin/manual/', {'codigo': self.inscricao.codigo_checkin})
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data['resultado'], 'aceita')
@@ -563,9 +570,9 @@ class CheckinTests(APITestCase):
 
     def test_manual_checkin_duplicada_on_second_attempt(self):
         self._auth(self.checkin_staff)
-        self.client.post('/api/admin/checkin/manual/', {'codigo': self.inscricao.token})
+        self.client.post('/api/admin/checkin/manual/', {'codigo': self.inscricao.codigo_checkin})
 
-        response = self.client.post('/api/admin/checkin/manual/', {'codigo': self.inscricao.token})
+        response = self.client.post('/api/admin/checkin/manual/', {'codigo': self.inscricao.codigo_checkin})
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data['resultado'], 'duplicada')
@@ -575,7 +582,7 @@ class CheckinTests(APITestCase):
         self.inscricao.save()
         self._auth(self.checkin_staff)
 
-        response = self.client.post('/api/admin/checkin/manual/', {'codigo': self.inscricao.token})
+        response = self.client.post('/api/admin/checkin/manual/', {'codigo': self.inscricao.codigo_checkin})
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data['resultado'], 'bloqueada')
@@ -590,6 +597,14 @@ class CheckinTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data['resultado'], 'bloqueada')
         self.assertIsNone(response.data['nome_completo'])
+
+    def test_manual_checkin_accepts_lowercase_and_surrounding_whitespace(self):
+        self._auth(self.checkin_staff)
+
+        response = self.client.post('/api/admin/checkin/manual/', {'codigo': f'  {self.inscricao.codigo_checkin.lower()}  '})
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['resultado'], 'aceita')
 
     def test_scan_checkin_aceita_valid_qr_token(self):
         self._auth(self.checkin_staff)
@@ -610,8 +625,8 @@ class CheckinTests(APITestCase):
     def test_every_attempt_is_logged_including_blocked_and_duplicate(self):
         self._auth(self.checkin_staff)
 
-        self.client.post('/api/admin/checkin/manual/', {'codigo': self.inscricao.token})  # aceita
-        self.client.post('/api/admin/checkin/manual/', {'codigo': self.inscricao.token})  # duplicada
+        self.client.post('/api/admin/checkin/manual/', {'codigo': self.inscricao.codigo_checkin})  # aceita
+        self.client.post('/api/admin/checkin/manual/', {'codigo': self.inscricao.codigo_checkin})  # duplicada
         self.client.post('/api/admin/checkin/manual/', {'codigo': 'inexistente'})  # bloqueada
 
         logs = CheckinAuditLog.objects.order_by('criado_em')
@@ -622,13 +637,13 @@ class CheckinTests(APITestCase):
     def test_user_without_permission_cannot_checkin(self):
         self._auth(self.sem_permissao)
 
-        response = self.client.post('/api/admin/checkin/manual/', {'codigo': self.inscricao.token})
+        response = self.client.post('/api/admin/checkin/manual/', {'codigo': self.inscricao.codigo_checkin})
 
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
         self.inscricao.refresh_from_db()
         self.assertIsNone(self.inscricao.checkin_em)
 
     def test_anonymous_cannot_checkin(self):
-        response = self.client.post('/api/admin/checkin/manual/', {'codigo': self.inscricao.token})
+        response = self.client.post('/api/admin/checkin/manual/', {'codigo': self.inscricao.codigo_checkin})
 
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)

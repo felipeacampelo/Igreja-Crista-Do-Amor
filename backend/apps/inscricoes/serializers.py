@@ -104,7 +104,7 @@ class InscricaoStatusSerializer(serializers.ModelSerializer):
         model = Inscricao
         fields = [
             'nome_completo', 'lote', 'cupom', 'status', 'preco_final', 'criado_em',
-            'pix_payload', 'motivo_rejeicao',
+            'pix_payload', 'motivo_rejeicao', 'codigo_checkin',
         ]
 
     def get_pix_payload(self, obj):

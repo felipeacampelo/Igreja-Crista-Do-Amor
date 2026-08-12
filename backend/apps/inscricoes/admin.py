@@ -11,10 +11,10 @@ class CupomAdmin(admin.ModelAdmin):
 
 @admin.register(Inscricao)
 class InscricaoAdmin(admin.ModelAdmin):
-    list_display = ['nome_completo', 'lote', 'cupom', 'status', 'preco_final', 'checkin_em', 'criado_em']
+    list_display = ['nome_completo', 'lote', 'cupom', 'status', 'codigo_checkin', 'checkin_em', 'criado_em']
     list_filter = ['status', 'lote', 'origem']
-    search_fields = ['nome_completo', 'cpf', 'email', 'token']
-    readonly_fields = ['token', 'criado_em', 'atualizado_em']
+    search_fields = ['nome_completo', 'cpf', 'email', 'token', 'codigo_checkin']
+    readonly_fields = ['token', 'codigo_checkin', 'criado_em', 'atualizado_em']
 
 
 @admin.register(CheckinAuditLog)

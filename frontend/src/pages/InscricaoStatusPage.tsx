@@ -87,7 +87,7 @@ export function InscricaoStatusPage() {
           <h2>Ingresso</h2>
           <a href={`${import.meta.env.VITE_API_URL}/api/inscricoes/${token}/ingresso/`}>Baixar ingresso (PDF)</a>
           <p>
-            Código manual para o check-in (caso a câmera não leia o QR): <strong>{token}</strong>
+            Código manual para o check-in (caso a câmera não leia o QR): <strong>{inscricao.codigo_checkin}</strong>
           </p>
         </>
       )}
