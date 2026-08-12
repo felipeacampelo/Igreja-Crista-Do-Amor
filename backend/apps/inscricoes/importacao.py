@@ -5,10 +5,17 @@ admin/UI, ver Out of Scope da issue #1).
 
 Reaproveita InscricaoCreateSerializer para manter a mesma validação e cálculo
 de preço do formulário público (idade/responsável, cupom, esgotamento de
-lote) — só sobrescreve status e origem depois de criar a inscrição.
+lote), passando status e origem como argumentos extras de save().
 
 Idempotente por CPF: uma linha cujo CPF já existe em alguma Inscricao é
-pulada (não é erro) — rodar o comando de novo não duplica inscrições.
+pulada (não é erro, mesmo se a inscrição existente não veio de importação —
+nunca cria uma segunda inscrição pro mesmo CPF) — rodar o comando de novo
+não duplica inscrições.
+
+Uma linha com erro (validação ou falha ao gravar) é reportada e pulada; não
+derruba as linhas seguintes — planilhas antigas costumam ter alguma linha
+ruim, e uma exceção não tratada no meio da lista não pode custar as que
+vêm depois.
 
 Só lê CSV, não XLSX: a issue #1 deixou o formato em aberto ("a confirmar no
 momento da execução") e nenhum dos dois projetos de referência (AreaMais,
@@ -39,6 +46,10 @@ CAMPOS_TEXTO = (
 )
 
 
+def _formata_erros(erros):
+    return ' | '.join(f"{campo}: {'; '.join(str(m) for m in mensagens)}" for campo, mensagens in erros.items())
+
+
 @dataclass
 class ResultadoImportacao:
     importadas: int = 0
@@ -65,9 +76,14 @@ def importar_linhas(linhas, dry_run=False):
             resultado.mensagens.append((numero, 'erro', 'CPF em branco.'))
             continue
 
-        if Inscricao.objects.filter(cpf=dados['cpf']).exists():
+        existente = Inscricao.objects.filter(cpf=dados['cpf']).first()
+        if existente is not None:
             resultado.puladas += 1
-            resultado.mensagens.append((numero, 'pulada', f"CPF {dados['cpf']} já importado."))
+            if existente.origem == Inscricao.Origem.IMPORTACAO:
+                motivo = f"CPF {dados['cpf']} já importado."
+            else:
+                motivo = f"CPF {dados['cpf']} já tem uma inscrição (origem: {existente.get_origem_display()}), pulando."
+            resultado.mensagens.append((numero, 'pulada', motivo))
             continue
 
         nome_lote = (linha.get('lote') or '').strip()
@@ -88,7 +104,7 @@ def importar_linhas(linhas, dry_run=False):
         serializer = InscricaoCreateSerializer(data=dados)
         if not serializer.is_valid():
             resultado.com_erro += 1
-            resultado.mensagens.append((numero, 'erro', str(serializer.errors)))
+            resultado.mensagens.append((numero, 'erro', _formata_erros(serializer.errors)))
             continue
 
         if dry_run:
@@ -108,10 +124,15 @@ def importar_linhas(linhas, dry_run=False):
             resultado.mensagens.append((numero, 'ok', f"{dados['nome_completo']} (simulado, nada foi gravado)."))
             continue
 
-        with transaction.atomic():
-            inscricao = serializer.save(origem=Inscricao.Origem.IMPORTACAO)
-            inscricao.status = Inscricao.Status.CONFIRMADA
-            inscricao.save(update_fields=['status', 'atualizado_em'])
+        try:
+            with transaction.atomic():
+                inscricao = serializer.save(origem=Inscricao.Origem.IMPORTACAO, status=Inscricao.Status.CONFIRMADA)
+        except Exception as erro:
+            # Ex.: a rechecagem de esgotamento sob lock em InscricaoCreateSerializer.create()
+            # levanta fora de is_valid() — uma linha ruim não pode derrubar as seguintes.
+            resultado.com_erro += 1
+            resultado.mensagens.append((numero, 'erro', f'Falha ao gravar: {erro}'))
+            continue
 
         enviar_ingresso_email_seguro(inscricao)
         resultado.importadas += 1

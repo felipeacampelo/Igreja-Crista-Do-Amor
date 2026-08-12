@@ -752,6 +752,36 @@ class ImportacaoPlanilhaTests(TestCase):
         self.assertEqual(segunda.puladas, 1)
         self.assertEqual(Inscricao.objects.filter(cpf='111.111.111-11').count(), 1)
 
+    def test_cpf_matching_existing_non_imported_inscricao_is_skipped_not_duplicated(self):
+        Inscricao.objects.create(
+            nome_completo='Maria Silva', cpf='111.111.111-11', email='maria@example.com', sexo='F',
+            data_nascimento=data_nascimento_com_idade(25), celular='11999990000',
+            lote=self.lote, preco_final=Decimal('150.00'), origem=Inscricao.Origem.FORMULARIO,
+        )
+
+        resultado = importar_linhas([self._linha()])
+
+        self.assertEqual(resultado.puladas, 1)
+        self.assertEqual(Inscricao.objects.filter(cpf='111.111.111-11').count(), 1)
+        self.assertIn('Formulário', resultado.mensagens[0][2])
+
+    def test_row_that_fails_to_save_does_not_abort_remaining_rows(self):
+        with patch(
+            'apps.inscricoes.importacao.InscricaoCreateSerializer.create',
+            side_effect=[Exception('falha simulada'), Inscricao(id=999)],
+        ):
+            # A própria mock acima não persiste de verdade; testamos só que a
+            # segunda linha ainda é tentada (não haveria 2ª chamada se a 1ª
+            # exceção tivesse propagado e derrubado o loop inteiro).
+            with patch('apps.inscricoes.importacao.enviar_ingresso_email_seguro'):
+                resultado = importar_linhas([
+                    self._linha(cpf='111', email='um@example.com'),
+                    self._linha(cpf='222', email='dois@example.com'),
+                ])
+
+        self.assertEqual(resultado.com_erro, 1)
+        self.assertEqual(resultado.importadas, 1)
+
     def test_unknown_lote_is_reported_as_error(self):
         resultado = importar_linhas([self._linha(lote='Lote Que Não Existe')])
 
