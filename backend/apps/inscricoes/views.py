@@ -8,7 +8,7 @@ from rest_framework.views import APIView
 
 from apps.users.permissions import PodeAprovarPagamento, PodeRealizarCheckin
 
-from .checkin import checkin_manual, checkin_via_qr
+from .checkin import checkin
 from .ingresso import build_ingresso_pdf_bytes
 from .models import Inscricao
 from .notificacoes import enviar_ingresso_email_seguro
@@ -144,7 +144,7 @@ class ScanCheckinView(APIView):
     permission_classes = [PodeRealizarCheckin]
 
     def post(self, request):
-        resultado, inscricao, _log = checkin_via_qr(request.data.get('token_qr', ''), request.user)
+        resultado, inscricao, _log = checkin(request.data.get('token_qr', ''), request.user)
         return Response(_checkin_payload(resultado, inscricao))
 
 
@@ -152,5 +152,5 @@ class ManualCheckinView(APIView):
     permission_classes = [PodeRealizarCheckin]
 
     def post(self, request):
-        resultado, inscricao, _log = checkin_manual(request.data.get('codigo', ''), request.user)
+        resultado, inscricao, _log = checkin(request.data.get('codigo', ''), request.user)
         return Response(_checkin_payload(resultado, inscricao))

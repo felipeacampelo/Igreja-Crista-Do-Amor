@@ -12,7 +12,6 @@ from rest_framework.test import APITestCase
 
 from apps.lotes.models import Lote
 
-from .ingresso import build_ingresso_token, resolve_ingresso_token
 from .models import CheckinAuditLog, Cupom, Inscricao
 from .pix import gerar_payload_pix
 from .storage import UploadComprovanteError
@@ -512,21 +511,6 @@ class IngressoTests(APITestCase):
             lote=self.lote, preco_final=Decimal('150.00'), status=Inscricao.Status.CONFIRMADA,
         )
 
-    def test_token_round_trip(self):
-        token = build_ingresso_token(self.inscricao)
-        resolvido = resolve_ingresso_token(token)
-
-        self.assertEqual(resolvido.id, self.inscricao.id)
-
-    def test_tampered_token_is_rejected(self):
-        from django.core import signing
-
-        token = build_ingresso_token(self.inscricao)
-        adulterado = token[:-1] + ('a' if token[-1] != 'a' else 'b')
-
-        with self.assertRaises(signing.BadSignature):
-            resolve_ingresso_token(adulterado)
-
     def test_download_returns_pdf_when_confirmada(self):
         response = self.client.get(f'/api/inscricoes/{self.inscricao.token}/ingresso/')
 
@@ -608,20 +592,17 @@ class CheckinTests(APITestCase):
         self.assertIsNone(response.data['nome_completo'])
 
     def test_scan_checkin_aceita_valid_qr_token(self):
-        token_qr = build_ingresso_token(self.inscricao)
         self._auth(self.checkin_staff)
 
-        response = self.client.post('/api/admin/checkin/scan/', {'token_qr': token_qr})
+        response = self.client.post('/api/admin/checkin/scan/', {'token_qr': self.inscricao.token})
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data['resultado'], 'aceita')
 
-    def test_scan_checkin_bloqueada_for_tampered_qr_token(self):
-        token_qr = build_ingresso_token(self.inscricao)
-        adulterado = token_qr[:-1] + ('a' if token_qr[-1] != 'a' else 'b')
+    def test_scan_checkin_bloqueada_for_unknown_qr_token(self):
         self._auth(self.checkin_staff)
 
-        response = self.client.post('/api/admin/checkin/scan/', {'token_qr': adulterado})
+        response = self.client.post('/api/admin/checkin/scan/', {'token_qr': 'codigo-que-nao-existe'})
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data['resultado'], 'bloqueada')

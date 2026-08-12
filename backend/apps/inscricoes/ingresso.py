@@ -1,29 +1,20 @@
 """
-Geração do ingresso: PDF com QR de token assinado no servidor, resolvido no
-check-in (issue #10) — replica o padrão de apps/tickets/services.py do
-Mio-Festa-2026 (django.core.signing + reportlab + qrcode).
+Geração do ingresso: PDF com QR do token da inscrição, resolvido no check-in
+(issue #10) — reportlab + qrcode, inspirado em apps/tickets/services.py do
+Mio-Festa-2026.
+
+O QR carrega o próprio Inscricao.token (24 bytes aleatórios via
+secrets.token_urlsafe, já usado como código manual de fallback) em vez de um
+payload assinado: o token já é imprevisível e único, então assiná-lo não
+adiciona segurança — só uma camada a mais para manter.
 """
 from io import BytesIO
 
 import qrcode
-from django.core import signing
 from reportlab.lib.pagesizes import A6
 from reportlab.lib.units import mm
 from reportlab.lib.utils import ImageReader
 from reportlab.pdfgen import canvas as pdf_canvas
-
-from .models import Inscricao
-
-SIGNING_SALT = 'fire-conference-ingresso'
-
-
-def build_ingresso_token(inscricao):
-    return signing.dumps({'inscricao_id': inscricao.id, 'token': inscricao.token}, salt=SIGNING_SALT)
-
-
-def resolve_ingresso_token(token):
-    payload = signing.loads(token, salt=SIGNING_SALT)
-    return Inscricao.objects.get(id=payload['inscricao_id'], token=payload['token'])
 
 
 def build_ingresso_pdf_bytes(inscricao):
@@ -54,7 +45,7 @@ def build_ingresso_pdf_bytes(inscricao):
         c.drawString(text_x, y - 4 * mm, valor)
         y -= 11 * mm
 
-    qr_image = qrcode.make(build_ingresso_token(inscricao), box_size=6, border=2)
+    qr_image = qrcode.make(inscricao.token, box_size=6, border=2)
     qr_buffer = BytesIO()
     qr_image.save(qr_buffer, format='PNG')
     qr_buffer.seek(0)
