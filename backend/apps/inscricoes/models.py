@@ -2,7 +2,7 @@ import secrets
 
 from django.conf import settings
 from django.core.validators import MinValueValidator
-from django.db import models
+from django.db import IntegrityError, models
 
 from apps.lotes.models import Lote
 
@@ -119,7 +119,18 @@ class Inscricao(models.Model):
     def save(self, *args, **kwargs):
         if not self.codigo_checkin:
             self.codigo_checkin = gerar_codigo_checkin()
-        super().save(*args, **kwargs)
+        # gerar_codigo_checkin() já confere unicidade antes de retornar, mas isso
+        # não fecha a corrida entre duas criações simultâneas escolhendo o mesmo
+        # código — o retry aqui cobre essa janela (token não precisa disso: tem
+        # entropia alta o bastante pra colisão ser praticamente impossível).
+        for tentativa in range(3):
+            try:
+                super().save(*args, **kwargs)
+                return
+            except IntegrityError:
+                if tentativa == 2:
+                    raise
+                self.codigo_checkin = gerar_codigo_checkin()
 
 
 class CheckinAuditLog(models.Model):

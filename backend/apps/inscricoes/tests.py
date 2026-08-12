@@ -125,6 +125,41 @@ class InscricaoCreateTests(APITestCase):
         self.assertIn('lote', response.data)
 
 
+class CodigoCheckinGeracaoTests(TestCase):
+    def setUp(self):
+        self.lote = Lote.objects.create(nome='Lote 1', preco=Decimal('150.00'), limite_vagas=10)
+
+    def _cria_inscricao(self, **overrides):
+        dados = dict(
+            nome_completo='Maria Silva', cpf='111', email='maria@example.com', sexo='F',
+            data_nascimento=data_nascimento_com_idade(25), celular='11999990000',
+            lote=self.lote, preco_final=Decimal('150.00'),
+        )
+        dados.update(overrides)
+        return Inscricao.objects.create(**dados)
+
+    def test_distinct_inscricoes_get_distinct_codigo_checkin(self):
+        primeira = self._cria_inscricao(email='um@example.com')
+        segunda = self._cria_inscricao(email='dois@example.com')
+
+        self.assertNotEqual(primeira.codigo_checkin, segunda.codigo_checkin)
+
+    def test_generation_retries_on_collision(self):
+        existente = self._cria_inscricao(email='primeira@example.com')
+
+        # Força o primeiro sorteio a repetir o código já existente; o segundo
+        # sorteio usa uma letra diferente pra garantir que o retry funcionou.
+        colidido = list(existente.codigo_checkin)
+        alternativo = 'A' if colidido[0] != 'A' else 'B'
+
+        with patch('apps.inscricoes.models.secrets.choice') as mock_choice:
+            mock_choice.side_effect = colidido + [alternativo] * 6
+            nova = self._cria_inscricao(email='segunda@example.com')
+
+        self.assertNotEqual(nova.codigo_checkin, existente.codigo_checkin)
+        self.assertTrue(mock_choice.call_count > 6)  # precisou de mais de uma tentativa
+
+
 class InscricaoStatusTests(APITestCase):
     def setUp(self):
         self.lote = Lote.objects.create(nome='Lote 1', preco=Decimal('150.00'), limite_vagas=10)
