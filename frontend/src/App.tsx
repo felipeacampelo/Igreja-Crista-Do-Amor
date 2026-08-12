@@ -6,7 +6,6 @@ import { AdminFilaAprovacaoPage } from './pages/AdminFilaAprovacaoPage'
 import { AdminLoginPage } from './pages/AdminLoginPage'
 import { InscricaoForm } from './pages/InscricaoForm'
 import { InscricaoStatusPage } from './pages/InscricaoStatusPage'
-import './App.css'
 
 function App() {
   return (

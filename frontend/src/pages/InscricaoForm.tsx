@@ -1,5 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { AlertCircle } from 'lucide-react'
+import { PublicHeader } from '../components/PublicHeader'
 import { api, formatApiErrors } from '../services/api'
 import type { Lote } from '../types'
 
@@ -69,96 +71,145 @@ export function InscricaoForm() {
   }
 
   return (
-    <>
-      <h1>Fire Conference</h1>
-      <form onSubmit={handleSubmit}>
-        <label>
-          Nome completo
-          <input value={nomeCompleto} onChange={(e) => setNomeCompleto(e.target.value)} required />
-        </label>
+    <div className="min-h-screen">
+      <PublicHeader />
 
-        <label>
-          CPF
-          <input value={cpf} onChange={(e) => setCpf(e.target.value)} required />
-        </label>
+      <main className="mx-auto max-w-3xl px-4 py-10">
+        <div className="mb-6 text-center">
+          <h1 className="text-2xl font-bold text-gray-900 sm:text-3xl">Inscreva-se na Fire Conference</h1>
+          <p className="mt-2 text-sm text-gray-600">Preencha seus dados para garantir sua vaga.</p>
+        </div>
 
-        <label>
-          E-mail
-          <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
-        </label>
-
-        <label>
-          Sexo
-          <select value={sexo} onChange={(e) => setSexo(e.target.value)}>
-            <option value="F">Feminino</option>
-            <option value="M">Masculino</option>
-          </select>
-        </label>
-
-        <label>
-          Data de nascimento
-          <input
-            type="date"
-            value={dataNascimento}
-            onChange={(e) => setDataNascimento(e.target.value)}
-            required
-          />
-        </label>
-
-        <label>
-          Celular
-          <input value={celular} onChange={(e) => setCelular(e.target.value)} required />
-        </label>
-
-        <label>
-          Lote
-          <select value={loteId} onChange={(e) => setLoteId(e.target.value)} required>
-            <option value="" disabled>
-              Selecione um lote
-            </option>
-            {lotes.map((lote) => (
-              <option key={lote.id} value={lote.id}>
-                {lote.nome} — R$ {lote.preco} ({lote.vagas_restantes} vagas)
-              </option>
-            ))}
-          </select>
-        </label>
-
-        <label>
-          Cupom (opcional)
-          <input value={cupomCodigo} onChange={(e) => setCupomCodigo(e.target.value)} />
-        </label>
-
-        {menorDeIdade && (
-          <>
-            <p>Inscrito menor de idade: informe os dados do responsável.</p>
-            <label>
-              Nome do responsável
-              <input value={nomeResponsavel} onChange={(e) => setNomeResponsavel(e.target.value)} required />
-            </label>
-            <label>
-              Celular do responsável
+        <form onSubmit={handleSubmit} className="card space-y-6">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="sm:col-span-2">
+              <label className="field-label">Nome completo</label>
               <input
-                value={celularResponsavel}
-                onChange={(e) => setCelularResponsavel(e.target.value)}
+                className="field-input"
+                value={nomeCompleto}
+                onChange={(e) => setNomeCompleto(e.target.value)}
                 required
               />
-            </label>
-          </>
-        )}
+            </div>
 
-        {errors.length > 0 && (
-          <ul>
-            {errors.map((error) => (
-              <li key={error}>{error}</li>
-            ))}
-          </ul>
-        )}
+            <div>
+              <label className="field-label">CPF</label>
+              <input className="field-input" value={cpf} onChange={(e) => setCpf(e.target.value)} required />
+            </div>
 
-        <button type="submit" disabled={submitting}>
-          {submitting ? 'Enviando...' : 'Inscrever-se'}
-        </button>
-      </form>
-    </>
+            <div>
+              <label className="field-label">E-mail</label>
+              <input
+                type="email"
+                className="field-input"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+              />
+            </div>
+
+            <div>
+              <label className="field-label">Sexo</label>
+              <select className="field-input" value={sexo} onChange={(e) => setSexo(e.target.value)}>
+                <option value="F">Feminino</option>
+                <option value="M">Masculino</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="field-label">Data de nascimento</label>
+              <input
+                type="date"
+                className="field-input"
+                value={dataNascimento}
+                onChange={(e) => setDataNascimento(e.target.value)}
+                required
+              />
+            </div>
+
+            <div>
+              <label className="field-label">Celular</label>
+              <input
+                className="field-input"
+                value={celular}
+                onChange={(e) => setCelular(e.target.value)}
+                required
+              />
+            </div>
+
+            <div>
+              <label className="field-label">Lote</label>
+              <select
+                className="field-input"
+                value={loteId}
+                onChange={(e) => setLoteId(e.target.value)}
+                required
+              >
+                <option value="" disabled>
+                  Selecione um lote
+                </option>
+                {lotes.map((lote) => (
+                  <option key={lote.id} value={lote.id}>
+                    {lote.nome} — R$ {lote.preco} ({lote.vagas_restantes} vagas)
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="sm:col-span-2">
+              <label className="field-label">Cupom (opcional)</label>
+              <input
+                className="field-input"
+                value={cupomCodigo}
+                onChange={(e) => setCupomCodigo(e.target.value)}
+              />
+            </div>
+          </div>
+
+          {menorDeIdade && (
+            <div className="rounded-lg border border-ember-dark/30 bg-ember/10 p-4">
+              <p className="mb-4 text-sm font-medium text-gray-800">
+                Inscrito menor de idade: informe os dados do responsável.
+              </p>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div>
+                  <label className="field-label">Nome do responsável</label>
+                  <input
+                    className="field-input"
+                    value={nomeResponsavel}
+                    onChange={(e) => setNomeResponsavel(e.target.value)}
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="field-label">Celular do responsável</label>
+                  <input
+                    className="field-input"
+                    value={celularResponsavel}
+                    onChange={(e) => setCelularResponsavel(e.target.value)}
+                    required
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+
+          {errors.length > 0 && (
+            <div className="flex items-start gap-3 rounded-lg border border-red-200 bg-red-50 p-4">
+              <AlertCircle className="mt-0.5 h-5 w-5 flex-shrink-0 text-red-600" />
+              <ul className="space-y-1 text-sm text-red-800">
+                {errors.map((error) => (
+                  <li key={error}>{error}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          <button type="submit" disabled={submitting} className="btn-primary w-full disabled:opacity-50">
+            {submitting ? 'Enviando...' : 'Inscrever-se'}
+          </button>
+        </form>
+      </main>
+    </div>
   )
 }
