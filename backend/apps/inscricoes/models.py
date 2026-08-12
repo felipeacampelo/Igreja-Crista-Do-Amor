@@ -1,5 +1,6 @@
 import secrets
 
+from django.conf import settings
 from django.core.validators import MinValueValidator
 from django.db import models
 
@@ -79,6 +80,15 @@ class Inscricao(models.Model):
     comprovante_path = models.CharField('Caminho do comprovante', max_length=255, blank=True)
     motivo_rejeicao = models.CharField('Motivo da rejeição', max_length=500, blank=True)
 
+    # Check-in é ortogonal ao status de pagamento (uma inscrição confirmada
+    # segue "confirmada" antes e depois do check-in) — checkin_em presente é
+    # o que marca o ingresso como já utilizado.
+    checkin_em = models.DateTimeField('Check-in em', null=True, blank=True)
+    checkin_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='checkins_realizados', verbose_name='Check-in por',
+    )
+
     criado_em = models.DateTimeField('Criado em', auto_now_add=True)
     atualizado_em = models.DateTimeField('Atualizado em', auto_now=True)
 
@@ -89,3 +99,29 @@ class Inscricao(models.Model):
 
     def __str__(self):
         return f'{self.nome_completo} - {self.lote.nome}'
+
+
+class CheckinAuditLog(models.Model):
+    class Resultado(models.TextChoices):
+        ACEITA = 'aceita', 'Aceita'
+        DUPLICADA = 'duplicada', 'Duplicada'
+        BLOQUEADA = 'bloqueada', 'Bloqueada'
+
+    inscricao = models.ForeignKey(
+        Inscricao, on_delete=models.PROTECT, related_name='checkin_logs',
+        null=True, blank=True, verbose_name='Inscrição',
+    )
+    resultado = models.CharField('Resultado', max_length=20, choices=Resultado.choices)
+    codigo_tentado = models.CharField('Código tentado', max_length=255, blank=True)
+    usuario = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.PROTECT, verbose_name='Usuário',
+    )
+    criado_em = models.DateTimeField('Criado em', auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Log de check-in'
+        verbose_name_plural = 'Logs de check-in'
+        ordering = ['-criado_em']
+
+    def __str__(self):
+        return f'{self.resultado} - {self.usuario} - {self.criado_em}'

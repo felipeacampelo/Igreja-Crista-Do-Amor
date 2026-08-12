@@ -13,7 +13,7 @@ from rest_framework.test import APITestCase
 from apps.lotes.models import Lote
 
 from .ingresso import build_ingresso_token, resolve_ingresso_token
-from .models import Cupom, Inscricao
+from .models import CheckinAuditLog, Cupom, Inscricao
 from .pix import gerar_payload_pix
 from .storage import UploadComprovanteError
 
@@ -546,3 +546,108 @@ class IngressoTests(APITestCase):
         response = self.client.get('/api/inscricoes/token-que-nao-existe/ingresso/')
 
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+
+class CheckinTests(APITestCase):
+    def setUp(self):
+        self.lote = Lote.objects.create(nome='Lote 1', preco=Decimal('150.00'), limite_vagas=10)
+        self.inscricao = Inscricao.objects.create(
+            nome_completo='Maria Silva', cpf='111', email='maria@example.com', sexo='F',
+            data_nascimento=data_nascimento_com_idade(25), celular='11999990000',
+            lote=self.lote, preco_final=Decimal('150.00'), status=Inscricao.Status.CONFIRMADA,
+        )
+
+        self.checkin_staff = User.objects.create_user(email='checkin@fireconference.local', password='senha-forte-123')
+        self.checkin_staff.user_permissions.add(Permission.objects.get(codename='realizar_checkin'))
+
+        self.sem_permissao = User.objects.create_user(email='sem-permissao-checkin@fireconference.local', password='senha-forte-123')
+
+    def _auth(self, user):
+        self.client.force_authenticate(user=user)
+
+    def test_manual_checkin_aceita_valid_unused_ingresso(self):
+        self._auth(self.checkin_staff)
+
+        response = self.client.post('/api/admin/checkin/manual/', {'codigo': self.inscricao.token})
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['resultado'], 'aceita')
+        self.assertEqual(response.data['nome_completo'], 'Maria Silva')
+        self.inscricao.refresh_from_db()
+        self.assertIsNotNone(self.inscricao.checkin_em)
+        self.assertEqual(self.inscricao.checkin_por, self.checkin_staff)
+
+    def test_manual_checkin_duplicada_on_second_attempt(self):
+        self._auth(self.checkin_staff)
+        self.client.post('/api/admin/checkin/manual/', {'codigo': self.inscricao.token})
+
+        response = self.client.post('/api/admin/checkin/manual/', {'codigo': self.inscricao.token})
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['resultado'], 'duplicada')
+
+    def test_manual_checkin_bloqueada_for_unconfirmed_inscricao(self):
+        self.inscricao.status = Inscricao.Status.PENDENTE
+        self.inscricao.save()
+        self._auth(self.checkin_staff)
+
+        response = self.client.post('/api/admin/checkin/manual/', {'codigo': self.inscricao.token})
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['resultado'], 'bloqueada')
+        self.inscricao.refresh_from_db()
+        self.assertIsNone(self.inscricao.checkin_em)
+
+    def test_manual_checkin_bloqueada_for_unknown_code(self):
+        self._auth(self.checkin_staff)
+
+        response = self.client.post('/api/admin/checkin/manual/', {'codigo': 'codigo-que-nao-existe'})
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['resultado'], 'bloqueada')
+        self.assertIsNone(response.data['nome_completo'])
+
+    def test_scan_checkin_aceita_valid_qr_token(self):
+        token_qr = build_ingresso_token(self.inscricao)
+        self._auth(self.checkin_staff)
+
+        response = self.client.post('/api/admin/checkin/scan/', {'token_qr': token_qr})
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['resultado'], 'aceita')
+
+    def test_scan_checkin_bloqueada_for_tampered_qr_token(self):
+        token_qr = build_ingresso_token(self.inscricao)
+        adulterado = token_qr[:-1] + ('a' if token_qr[-1] != 'a' else 'b')
+        self._auth(self.checkin_staff)
+
+        response = self.client.post('/api/admin/checkin/scan/', {'token_qr': adulterado})
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['resultado'], 'bloqueada')
+
+    def test_every_attempt_is_logged_including_blocked_and_duplicate(self):
+        self._auth(self.checkin_staff)
+
+        self.client.post('/api/admin/checkin/manual/', {'codigo': self.inscricao.token})  # aceita
+        self.client.post('/api/admin/checkin/manual/', {'codigo': self.inscricao.token})  # duplicada
+        self.client.post('/api/admin/checkin/manual/', {'codigo': 'inexistente'})  # bloqueada
+
+        logs = CheckinAuditLog.objects.order_by('criado_em')
+        self.assertEqual(logs.count(), 3)
+        self.assertEqual(list(logs.values_list('resultado', flat=True)), ['aceita', 'duplicada', 'bloqueada'])
+        self.assertTrue(all(log.usuario == self.checkin_staff for log in logs))
+
+    def test_user_without_permission_cannot_checkin(self):
+        self._auth(self.sem_permissao)
+
+        response = self.client.post('/api/admin/checkin/manual/', {'codigo': self.inscricao.token})
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.inscricao.refresh_from_db()
+        self.assertIsNone(self.inscricao.checkin_em)
+
+    def test_anonymous_cannot_checkin(self):
+        response = self.client.post('/api/admin/checkin/manual/', {'codigo': self.inscricao.token})
+
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)

@@ -8,4 +8,5 @@ urlpatterns = [
     path('api/auth/', include('apps.users.urls')),
     path('api/inscricoes/', include('apps.inscricoes.urls')),
     path('api/admin/inscricoes/', include('apps.inscricoes.admin_urls')),
+    path('api/admin/checkin/', include('apps.inscricoes.checkin_urls')),
 ]

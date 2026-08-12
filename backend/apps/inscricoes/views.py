@@ -6,8 +6,9 @@ from rest_framework.generics import get_object_or_404
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from apps.users.permissions import PodeAprovarPagamento
+from apps.users.permissions import PodeAprovarPagamento, PodeRealizarCheckin
 
+from .checkin import checkin_manual, checkin_via_qr
 from .ingresso import build_ingresso_pdf_bytes
 from .models import Inscricao
 from .notificacoes import enviar_ingresso_email_seguro
@@ -128,3 +129,28 @@ class IngressoDownloadView(APIView):
         # inline (não attachment) para permitir visualização no navegador, além de download.
         response['Content-Disposition'] = 'inline; filename="ingresso.pdf"'
         return response
+
+
+def _checkin_payload(resultado, inscricao):
+    return {
+        'resultado': resultado,
+        'nome_completo': inscricao.nome_completo if inscricao else None,
+        'lote': inscricao.lote.nome if inscricao else None,
+        'checkin_em': inscricao.checkin_em if inscricao else None,
+    }
+
+
+class ScanCheckinView(APIView):
+    permission_classes = [PodeRealizarCheckin]
+
+    def post(self, request):
+        resultado, inscricao, _log = checkin_via_qr(request.data.get('token_qr', ''), request.user)
+        return Response(_checkin_payload(resultado, inscricao))
+
+
+class ManualCheckinView(APIView):
+    permission_classes = [PodeRealizarCheckin]
+
+    def post(self, request):
+        resultado, inscricao, _log = checkin_manual(request.data.get('codigo', ''), request.user)
+        return Response(_checkin_payload(resultado, inscricao))

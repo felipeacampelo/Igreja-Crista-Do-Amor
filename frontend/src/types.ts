@@ -31,3 +31,10 @@ export type InscricaoFilaAprovacao = {
   comprovante_url: string | null
   criado_em: string
 }
+
+export type CheckinResultado = {
+  resultado: 'aceita' | 'duplicada' | 'bloqueada'
+  nome_completo: string | null
+  lote: string | null
+  checkin_em: string | null
+}

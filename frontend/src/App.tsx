@@ -1,6 +1,7 @@
 import { BrowserRouter, Route, Routes } from 'react-router-dom'
 import { PrivateAdminRoute } from './components/PrivateAdminRoute'
 import { AuthProvider } from './contexts/AuthContext'
+import { AdminCheckinPage } from './pages/AdminCheckinPage'
 import { AdminFilaAprovacaoPage } from './pages/AdminFilaAprovacaoPage'
 import { AdminLoginPage } from './pages/AdminLoginPage'
 import { InscricaoForm } from './pages/InscricaoForm'
@@ -20,6 +21,14 @@ function App() {
             element={
               <PrivateAdminRoute>
                 <AdminFilaAprovacaoPage />
+              </PrivateAdminRoute>
+            }
+          />
+          <Route
+            path="/admin/checkin"
+            element={
+              <PrivateAdminRoute>
+                <AdminCheckinPage />
               </PrivateAdminRoute>
             }
           />

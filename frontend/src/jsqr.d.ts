@@ -1,0 +1,7 @@
+declare module 'jsqr' {
+  type QRCode = {
+    data: string
+  }
+
+  export default function jsQR(data: Uint8ClampedArray, width: number, height: number): QRCode | null
+}
