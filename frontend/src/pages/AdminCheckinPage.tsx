@@ -14,6 +14,7 @@ export function AdminCheckinPage() {
   const [resultado, setResultado] = useState<CheckinResultado | null>(null)
   const [erro, setErro] = useState('')
   const [validando, setValidando] = useState(false)
+  const [semPermissao, setSemPermissao] = useState(false)
 
   const { videoRef, scanning, cameraError, startCamera, stopCamera } = useQrScanner(async (data) => {
     await validar(() => adminApi.post<CheckinResultado>('/api/admin/checkin/scan/', { token_qr: data }))
@@ -26,8 +27,13 @@ export function AdminCheckinPage() {
     try {
       const response = await chamada()
       setResultado(response.data)
-    } catch {
-      setErro('Erro ao validar. Tente novamente.')
+    } catch (error: unknown) {
+      const statusCode = (error as { response?: { status?: number } })?.response?.status
+      if (statusCode === 403 || statusCode === 401) {
+        setSemPermissao(true)
+      } else {
+        setErro('Erro ao validar. Tente novamente.')
+      }
     } finally {
       setValidando(false)
     }
@@ -42,6 +48,10 @@ export function AdminCheckinPage() {
     setResultado(null)
     setErro('')
     setCodigo('')
+  }
+
+  if (semPermissao) {
+    return <p>Você não tem permissão para realizar check-in.</p>
   }
 
   if (resultado) {

@@ -59,10 +59,15 @@ def build_ingresso_pdf_bytes(inscricao):
     qr_image.save(qr_buffer, format='PNG')
     qr_buffer.seek(0)
     qr_size = 45 * mm
-    c.drawImage(ImageReader(qr_buffer), (width - qr_size) / 2, 10 * mm, width=qr_size, height=qr_size)  # centralizado
+    c.drawImage(ImageReader(qr_buffer), (width - qr_size) / 2, 14 * mm, width=qr_size, height=qr_size)  # centralizado
+
+    # Código manual de fallback (issue #10) — o mesmo Inscricao.token usado na
+    # URL da página de status, para digitar se a câmera do check-in falhar.
+    c.setFont('Helvetica', 6)
+    c.drawCentredString(width / 2, 9 * mm, f'Código manual: {inscricao.token}')
 
     c.setFont('Helvetica', 6.5)
-    c.drawCentredString(width / 2, 6 * mm, 'Apresente este QR code na entrada.')
+    c.drawCentredString(width / 2, 5 * mm, 'Apresente este QR code na entrada.')
 
     c.showPage()
     c.save()
