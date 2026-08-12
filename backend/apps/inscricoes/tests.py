@@ -1,3 +1,4 @@
+import tempfile
 from datetime import date, timedelta
 from decimal import Decimal
 from unittest.mock import patch
@@ -6,12 +7,14 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Permission
 from django.core import mail
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.core.management import call_command
 from django.test import TestCase
 from rest_framework import status
 from rest_framework.test import APITestCase
 
 from apps.lotes.models import Lote
 
+from .importacao import importar_linhas
 from .models import CheckinAuditLog, Cupom, Inscricao
 from .pix import gerar_payload_pix
 from .storage import UploadComprovanteError
@@ -682,3 +685,123 @@ class CheckinTests(APITestCase):
         response = self.client.post('/api/admin/checkin/manual/', {'codigo': self.inscricao.codigo_checkin})
 
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+
+class ImportacaoPlanilhaTests(TestCase):
+    def setUp(self):
+        self.lote = Lote.objects.create(nome='Lote 1', preco=Decimal('150.00'), limite_vagas=2)
+
+    def _linha(self, **overrides):
+        linha = {
+            'nome_completo': 'Maria Silva',
+            'cpf': '111.111.111-11',
+            'email': 'maria@example.com',
+            'sexo': 'F',
+            'data_nascimento': data_nascimento_com_idade(25).isoformat(),
+            'celular': '11999990000',
+            'nome_responsavel': '',
+            'celular_responsavel': '',
+            'lote': self.lote.nome,
+            'cupom_codigo': '',
+        }
+        linha.update(overrides)
+        return linha
+
+    def test_valid_row_creates_confirmed_imported_inscricao(self):
+        resultado = importar_linhas([self._linha()])
+
+        self.assertEqual(resultado.importadas, 1)
+        self.assertEqual(resultado.puladas, 0)
+        self.assertEqual(resultado.com_erro, 0)
+
+        inscricao = Inscricao.objects.get(cpf='111.111.111-11')
+        self.assertEqual(inscricao.nome_completo, 'Maria Silva')
+        self.assertEqual(inscricao.status, Inscricao.Status.CONFIRMADA)
+        self.assertEqual(inscricao.origem, Inscricao.Origem.IMPORTACAO)
+        self.assertEqual(inscricao.lote, self.lote)
+        self.assertEqual(inscricao.preco_final, Decimal('150.00'))
+
+    def test_imported_inscricao_counts_toward_lote_vagas(self):
+        importar_linhas([
+            self._linha(cpf='111', email='um@example.com'),
+            self._linha(cpf='222', email='dois@example.com'),
+        ])
+
+        self.assertEqual(self.lote.vagas_ocupadas, 2)
+        self.assertTrue(self.lote.esgotado)
+
+    def test_row_beyond_lote_limit_is_reported_as_error_not_created(self):
+        resultado = importar_linhas([
+            self._linha(cpf='111', email='um@example.com'),
+            self._linha(cpf='222', email='dois@example.com'),
+            self._linha(cpf='333', email='tres@example.com'),  # limite_vagas=2
+        ])
+
+        self.assertEqual(resultado.importadas, 2)
+        self.assertEqual(resultado.com_erro, 1)
+        self.assertFalse(Inscricao.objects.filter(cpf='333').exists())
+
+    def test_reimporting_same_file_is_idempotent(self):
+        linha = self._linha()
+
+        primeira = importar_linhas([linha])
+        segunda = importar_linhas([linha])
+
+        self.assertEqual(primeira.importadas, 1)
+        self.assertEqual(segunda.importadas, 0)
+        self.assertEqual(segunda.puladas, 1)
+        self.assertEqual(Inscricao.objects.filter(cpf='111.111.111-11').count(), 1)
+
+    def test_unknown_lote_is_reported_as_error(self):
+        resultado = importar_linhas([self._linha(lote='Lote Que Não Existe')])
+
+        self.assertEqual(resultado.com_erro, 1)
+        self.assertEqual(resultado.importadas, 0)
+        self.assertFalse(Inscricao.objects.filter(cpf='111.111.111-11').exists())
+
+    def test_menor_de_idade_sem_responsavel_is_reported_as_error(self):
+        resultado = importar_linhas([self._linha(
+            data_nascimento=data_nascimento_com_idade(16).isoformat(),
+        )])
+
+        self.assertEqual(resultado.com_erro, 1)
+        self.assertFalse(Inscricao.objects.filter(cpf='111.111.111-11').exists())
+
+    def test_cupom_codigo_applies_discount(self):
+        Cupom.objects.create(codigo='SERVIR', valor_desconto=Decimal('50.00'), limite_usos=10)
+
+        importar_linhas([self._linha(cupom_codigo='servir')])
+
+        inscricao = Inscricao.objects.get(cpf='111.111.111-11')
+        self.assertEqual(inscricao.preco_final, Decimal('100.00'))
+        self.assertEqual(inscricao.cupom.codigo, 'SERVIR')
+
+    def test_import_sends_ingresso_email(self):
+        importar_linhas([self._linha()])
+
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertEqual(mail.outbox[0].to, ['maria@example.com'])
+        self.assertEqual(len(mail.outbox[0].attachments), 1)
+
+    def test_dry_run_does_not_create_or_send_email(self):
+        resultado = importar_linhas([self._linha()], dry_run=True)
+
+        self.assertEqual(resultado.importadas, 1)
+        self.assertFalse(Inscricao.objects.filter(cpf='111.111.111-11').exists())
+        self.assertEqual(len(mail.outbox), 0)
+
+    def test_management_command_reads_csv_file_end_to_end(self):
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.csv', delete=False, newline='') as arquivo:
+            arquivo.write(
+                'nome_completo,cpf,email,sexo,data_nascimento,celular,nome_responsavel,'
+                'celular_responsavel,lote,cupom_codigo\n'
+            )
+            arquivo.write(
+                f'Maria Silva,111.111.111-11,maria@example.com,F,'
+                f'{data_nascimento_com_idade(25).isoformat()},11999990000,,,{self.lote.nome},\n'
+            )
+            caminho = arquivo.name
+
+        call_command('importar_planilha', file=caminho)
+
+        self.assertTrue(Inscricao.objects.filter(cpf='111.111.111-11').exists())
