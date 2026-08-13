@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Calendar, Flame, QrCode, Ticket, Wallet } from 'lucide-react'
+import { Calendar, QrCode, Ticket, Wallet } from 'lucide-react'
 import { PublicHeader } from '../components/PublicHeader'
 import { Countdown } from '../components/Countdown'
 import { api } from '../services/api'
@@ -42,11 +42,14 @@ export function Home() {
     <div className="min-h-screen">
       <PublicHeader />
 
-      <section className="relative bg-gradient-to-br from-black to-flame-dark py-20 text-center text-white">
+      <section className="bg-black">
+        <h1 className="sr-only">Fire Conference '26</h1>
+        <img src="/HomepageFireConf.png" alt="Fire Conference '26 — Outubro 26'" className="w-full" />
+      </section>
+
+      <section className="bg-black py-12 text-center text-white">
         <div className="mx-auto max-w-3xl px-4">
-          <Flame className="mx-auto mb-4 h-14 w-14 text-ember" />
-          <h1 className="text-4xl font-extrabold tracking-tight sm:text-6xl">Fire Conference '26</h1>
-          <p className="mt-4 flex items-center justify-center gap-2 text-lg text-ember">
+          <p className="flex items-center justify-center gap-2 text-lg text-ember">
             <Calendar className="h-5 w-5" />
             16 a 18 de outubro de 2026
           </p>
