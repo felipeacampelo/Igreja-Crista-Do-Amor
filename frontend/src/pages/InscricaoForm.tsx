@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { AlertCircle } from 'lucide-react'
 import { PublicHeader } from '../components/PublicHeader'
 import { api, formatApiErrors } from '../services/api'
@@ -21,6 +21,7 @@ function calculaIdade(dataNascimento: string): number | null {
 
 export function InscricaoForm() {
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const [lotes, setLotes] = useState<Lote[]>([])
   const [errors, setErrors] = useState<string[]>([])
   const [submitting, setSubmitting] = useState(false)
@@ -31,7 +32,7 @@ export function InscricaoForm() {
   const [sexo, setSexo] = useState('F')
   const [dataNascimento, setDataNascimento] = useState('')
   const [celular, setCelular] = useState('')
-  const [loteId, setLoteId] = useState('')
+  const [loteId, setLoteId] = useState(searchParams.get('lote') ?? '')
   const [cupomCodigo, setCupomCodigo] = useState('')
   const [nomeResponsavel, setNomeResponsavel] = useState('')
   const [celularResponsavel, setCelularResponsavel] = useState('')
