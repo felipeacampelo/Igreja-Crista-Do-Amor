@@ -577,6 +577,56 @@ class IngressoTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
 
+class PixQrCodeTests(APITestCase):
+    def setUp(self):
+        self.lote = Lote.objects.create(nome='Lote 1', preco=Decimal('150.00'), limite_vagas=10)
+        self.inscricao = Inscricao.objects.create(
+            nome_completo='Maria Silva', cpf='111', email='maria@example.com', sexo='F',
+            data_nascimento=data_nascimento_com_idade(25), celular='11999990000',
+            lote=self.lote, preco_final=Decimal('150.00'),
+        )
+
+    def test_returns_png_image(self):
+        response = self.client.get(f'/api/inscricoes/{self.inscricao.token}/pix-qr/')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response['Content-Type'], 'image/png')
+        self.assertTrue(response.content.startswith(b'\x89PNG'))
+
+    def test_available_regardless_of_status(self):
+        # O QR do Pix precisa aparecer justamente enquanto a inscrição ainda não
+        # está confirmada — é o que falta pra chegar lá.
+        for novo_status in (Inscricao.Status.PENDENTE, Inscricao.Status.COMPROVANTE_ENVIADO, Inscricao.Status.CONFIRMADA):
+            self.inscricao.status = novo_status
+            self.inscricao.save()
+
+            response = self.client.get(f'/api/inscricoes/{self.inscricao.token}/pix-qr/')
+
+            self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+    def test_unknown_token_returns_404(self):
+        response = self.client.get('/api/inscricoes/token-que-nao-existe/pix-qr/')
+
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_qr_encodes_the_same_payload_as_the_status_endpoint(self):
+        import io
+
+        import qrcode
+
+        status_response = self.client.get(f'/api/inscricoes/{self.inscricao.token}/')
+        qr_response = self.client.get(f'/api/inscricoes/{self.inscricao.token}/pix-qr/')
+
+        # Sem lib de leitura de QR nas dependências: em vez de decodificar a
+        # imagem retornada, gera de novo a partir do mesmo payload (mesmos
+        # parâmetros da view) e compara os bytes do PNG.
+        esperado = qrcode.make(status_response.data['pix_payload'], box_size=6, border=2)
+        buffer_esperado = io.BytesIO()
+        esperado.save(buffer_esperado, format='PNG')
+
+        self.assertEqual(qr_response.content, buffer_esperado.getvalue())
+
+
 class CheckinTests(APITestCase):
     def setUp(self):
         self.lote = Lote.objects.create(nome='Lote 1', preco=Decimal('150.00'), limite_vagas=10)

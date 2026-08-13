@@ -115,7 +115,14 @@ export function InscricaoStatusPage() {
         </div>
 
         <div className="card">
-          <h2 className="mb-3 text-lg font-bold text-gray-900">Pix copia e cola</h2>
+          <h2 className="mb-3 text-lg font-bold text-gray-900">Pagamento via Pix</h2>
+          <img
+            src={`${import.meta.env.VITE_API_URL}/api/inscricoes/${token}/pix-qr/`}
+            alt="QR code Pix"
+            width={200}
+            height={200}
+            className="mx-auto mb-4 rounded-lg border border-gray-200"
+          />
           <textarea
             readOnly
             value={inscricao.pix_payload}

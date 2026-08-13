@@ -7,6 +7,8 @@ import re
 import unicodedata
 from decimal import Decimal
 
+from django.conf import settings
+
 
 def _campo(id_campo, valor):
     return f'{id_campo}{len(valor):02d}{valor}'
@@ -63,3 +65,13 @@ def gerar_payload_pix(chave, nome_recebedor, cidade_recebedor, valor, txid):
     ]
     payload_sem_crc = ''.join(partes) + '6304'  # "6304" = início do campo CRC (ID 63, tamanho 04)
     return payload_sem_crc + _crc16_ccitt_false(payload_sem_crc)
+
+
+def payload_pix_da_inscricao(inscricao):
+    return gerar_payload_pix(
+        chave=settings.PIX_KEY,
+        nome_recebedor=settings.PIX_MERCHANT_NAME,
+        cidade_recebedor=settings.PIX_MERCHANT_CITY,
+        valor=inscricao.preco_final,
+        txid=f'INSC{inscricao.id}',
+    )

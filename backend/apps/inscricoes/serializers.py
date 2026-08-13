@@ -1,14 +1,13 @@
 from datetime import date
 from decimal import Decimal
 
-from django.conf import settings
 from django.db import transaction
 from rest_framework import serializers
 
 from apps.lotes.models import Lote
 
 from .models import Cupom, Inscricao
-from .pix import gerar_payload_pix
+from .pix import payload_pix_da_inscricao
 from .storage import AssinaturaUrlError, gerar_url_assinada
 
 
@@ -108,13 +107,7 @@ class InscricaoStatusSerializer(serializers.ModelSerializer):
         ]
 
     def get_pix_payload(self, obj):
-        return gerar_payload_pix(
-            chave=settings.PIX_KEY,
-            nome_recebedor=settings.PIX_MERCHANT_NAME,
-            cidade_recebedor=settings.PIX_MERCHANT_CITY,
-            valor=obj.preco_final,
-            txid=f'INSC{obj.id}',
-        )
+        return payload_pix_da_inscricao(obj)
 
 
 class AdminInscricaoQueueSerializer(serializers.ModelSerializer):

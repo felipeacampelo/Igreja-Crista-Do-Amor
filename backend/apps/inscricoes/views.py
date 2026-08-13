@@ -1,5 +1,7 @@
 import os
+from io import BytesIO
 
+import qrcode
 from django.http import HttpResponse
 from rest_framework import generics, status
 from rest_framework.generics import get_object_or_404
@@ -12,6 +14,7 @@ from .checkin import checkin_manual, checkin_via_qr
 from .ingresso import build_ingresso_pdf_bytes
 from .models import Inscricao
 from .notificacoes import enviar_ingresso_email_seguro
+from .pix import payload_pix_da_inscricao
 from .serializers import (
     AdminInscricaoQueueSerializer,
     ComprovanteUploadSerializer,
@@ -30,6 +33,16 @@ class InscricaoDetailView(generics.RetrieveAPIView):
     queryset = Inscricao.objects.all()
     serializer_class = InscricaoStatusSerializer
     lookup_field = 'token'
+
+
+class PixQrCodeView(APIView):
+    def get(self, request, token):
+        inscricao = get_object_or_404(Inscricao, token=token)
+
+        qr_image = qrcode.make(payload_pix_da_inscricao(inscricao), box_size=6, border=2)
+        buffer = BytesIO()
+        qr_image.save(buffer, format='PNG')
+        return HttpResponse(buffer.getvalue(), content_type='image/png')
 
 
 class ComprovanteUploadView(APIView):
