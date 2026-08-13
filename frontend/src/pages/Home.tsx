@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Calendar, QrCode, Ticket, Wallet } from 'lucide-react'
+import { Calendar, MapPin, QrCode, Ticket, Wallet } from 'lucide-react'
 import { PublicHeader } from '../components/PublicHeader'
 import { Countdown } from '../components/Countdown'
 import { api } from '../services/api'
@@ -64,8 +64,21 @@ export function Home() {
         </div>
       </section>
 
+      <section className="bg-white py-16">
+        <div className="mx-auto max-w-2xl px-4 text-center">
+          <h2 className="text-xl font-extrabold uppercase tracking-wide text-flame sm:text-2xl">
+            Servir. Amar. Queimar. Permanecer Desperto.
+          </h2>
+          <p className="mt-6 text-lg leading-relaxed text-gray-700">
+            Esqueça o automático. A Fire Conference é uma experiência criada para despertar uma geração que
+            vive o Reino com intensidade e propósito. Não é sobre assistir a um evento, é sobre ser
+            transformado para impactar o mundo. Você está pronto para queimar por algo maior?
+          </p>
+        </div>
+      </section>
+
       <section className="bg-gray-50 py-16">
-        <div className="mx-auto max-w-4xl px-4">
+        <div className="mx-auto flex max-w-4xl flex-col gap-8 px-4 sm:flex-row sm:justify-center">
           <div className="flex items-start justify-center gap-4">
             <div className="flex h-14 w-14 flex-shrink-0 items-center justify-center rounded-full bg-flame">
               <Calendar className="h-7 w-7 text-white" />
@@ -73,6 +86,16 @@ export function Home() {
             <div>
               <h2 className="mb-1 text-lg font-semibold text-flame">Data</h2>
               <p className="text-2xl font-bold text-gray-900">16 a 18 de outubro de 2026</p>
+            </div>
+          </div>
+
+          <div className="flex items-start justify-center gap-4">
+            <div className="flex h-14 w-14 flex-shrink-0 items-center justify-center rounded-full bg-flame">
+              <MapPin className="h-7 w-7 text-white" />
+            </div>
+            <div>
+              <h2 className="mb-1 text-lg font-semibold text-flame">Local</h2>
+              <p className="text-2xl font-bold text-gray-900">Igreja Cristã do Amor</p>
             </div>
           </div>
         </div>
