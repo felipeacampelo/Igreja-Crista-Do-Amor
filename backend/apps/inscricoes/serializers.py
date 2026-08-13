@@ -94,6 +94,16 @@ class ComprovanteUploadSerializer(serializers.Serializer):
         return arquivo
 
 
+class CupomAdminSerializer(serializers.ModelSerializer):
+    usos_count = serializers.IntegerField(read_only=True)
+    esgotado = serializers.BooleanField(read_only=True)
+
+    class Meta:
+        model = Cupom
+        fields = ['id', 'codigo', 'valor_desconto', 'limite_usos', 'usos_count', 'esgotado', 'criado_em']
+        read_only_fields = ['criado_em']
+
+
 class InscricaoStatusSerializer(serializers.ModelSerializer):
     lote = serializers.CharField(source='lote.nome', read_only=True)
     cupom = serializers.CharField(source='cupom.codigo', read_only=True, allow_null=True)

@@ -9,6 +9,7 @@ from django.core import mail
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.core.management import call_command
 from django.test import TestCase
+from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APITestCase
 
@@ -910,3 +911,138 @@ class ImportacaoPlanilhaTests(TestCase):
         call_command('importar_planilha', file=caminho)
 
         self.assertTrue(Inscricao.objects.filter(cpf='111.111.111-11').exists())
+
+
+class CupomAdminApiTests(APITestCase):
+    def setUp(self):
+        self.staff = User.objects.create_user(
+            email='staff@fireconference.local', password='senha-forte-123', is_staff=True,
+        )
+        self.sem_permissao = User.objects.create_user(email='sem-permissao@fireconference.local', password='senha-forte-123')
+
+    def _auth(self, user):
+        self.client.force_authenticate(user=user)
+
+    def test_list_cupons_includes_usos_count(self):
+        cupom = Cupom.objects.create(codigo='SERVIR', valor_desconto=Decimal('20.00'), limite_usos=5)
+        lote = Lote.objects.create(nome='Lote 1', preco=Decimal('150.00'), limite_vagas=10)
+        Inscricao.objects.create(
+            nome_completo='Maria Silva', cpf='111', email='maria@example.com', sexo='F',
+            data_nascimento=data_nascimento_com_idade(25), celular='11999990000',
+            lote=lote, cupom=cupom, preco_final=Decimal('130.00'),
+        )
+        self._auth(self.staff)
+
+        response = self.client.get('/api/admin/cupons/')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data[0]['usos_count'], 1)
+
+    def test_create_cupom(self):
+        self._auth(self.staff)
+
+        response = self.client.post('/api/admin/cupons/', {
+            'codigo': 'staff', 'valor_desconto': '30.00', 'limite_usos': 20,
+        })
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertTrue(Cupom.objects.filter(codigo='STAFF').exists())  # Cupom.save() normaliza pra maiúsculas
+
+    def test_update_cupom_limite_usos(self):
+        cupom = Cupom.objects.create(codigo='SERVIR', valor_desconto=Decimal('20.00'), limite_usos=5)
+        self._auth(self.staff)
+
+        response = self.client.patch(f'/api/admin/cupons/{cupom.id}/', {'limite_usos': 10})
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        cupom.refresh_from_db()
+        self.assertEqual(cupom.limite_usos, 10)
+
+    def test_non_staff_user_cannot_manage_cupons(self):
+        self._auth(self.sem_permissao)
+
+        response = self.client.get('/api/admin/cupons/')
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_anonymous_cannot_manage_cupons(self):
+        response = self.client.get('/api/admin/cupons/')
+
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+
+class DashboardTests(APITestCase):
+    def setUp(self):
+        self.lote = Lote.objects.create(nome='Lote 1', preco=Decimal('150.00'), limite_vagas=10)
+        self.aprovador = User.objects.create_user(email='aprovador@fireconference.local', password='senha-forte-123')
+        self.aprovador.user_permissions.add(Permission.objects.get(codename='aprovar_pagamento'))
+        self.sem_permissao = User.objects.create_user(email='sem-permissao@fireconference.local', password='senha-forte-123')
+
+    def _auth(self, user):
+        self.client.force_authenticate(user=user)
+
+    def _cria_inscricao(self, **overrides):
+        dados = dict(
+            nome_completo='Maria Silva', cpf='111', email='maria@example.com', sexo='F',
+            data_nascimento=data_nascimento_com_idade(25), celular='11999990000',
+            lote=self.lote, preco_final=Decimal('150.00'),
+        )
+        dados.update(overrides)
+        return Inscricao.objects.create(**dados)
+
+    def test_counts_and_revenue_by_status(self):
+        self._cria_inscricao(email='a@example.com', status=Inscricao.Status.CONFIRMADA)
+        self._cria_inscricao(email='b@example.com', status=Inscricao.Status.CONFIRMADA)
+        self._cria_inscricao(email='c@example.com', status=Inscricao.Status.PENDENTE)
+        self._cria_inscricao(email='d@example.com', status=Inscricao.Status.COMPROVANTE_ENVIADO)
+        self._cria_inscricao(email='e@example.com', status=Inscricao.Status.REJEITADA)
+        self._auth(self.aprovador)
+
+        response = self.client.get('/api/admin/dashboard/')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['inscricoes']['confirmadas'], 2)
+        self.assertEqual(response.data['inscricoes']['aguardando_revisao'], 2)
+        self.assertEqual(response.data['inscricoes']['rejeitadas'], 1)
+        self.assertEqual(response.data['receita']['confirmada'], '300.00')
+        self.assertEqual(response.data['receita']['pendente'], '300.00')
+
+    def test_checkin_counts(self):
+        self._cria_inscricao(
+            email='checked@example.com', status=Inscricao.Status.CONFIRMADA, checkin_em=timezone.now(),
+        )
+        self._cria_inscricao(email='nao-checked@example.com', status=Inscricao.Status.CONFIRMADA)
+        self._auth(self.aprovador)
+
+        response = self.client.get('/api/admin/dashboard/')
+
+        self.assertEqual(response.data['checkin']['feitos'], 1)
+        self.assertEqual(response.data['checkin']['confirmadas'], 2)
+
+    def test_includes_active_lote(self):
+        self._auth(self.aprovador)
+
+        response = self.client.get('/api/admin/dashboard/')
+
+        self.assertEqual(response.data['lote_ativo']['nome'], 'Lote 1')
+
+    def test_null_active_lote_when_none_active(self):
+        self.lote.ativo = False
+        self.lote.save()
+        self._auth(self.aprovador)
+
+        response = self.client.get('/api/admin/dashboard/')
+
+        self.assertIsNone(response.data['lote_ativo'])
+
+    def test_user_without_permission_cannot_access_dashboard(self):
+        self._auth(self.sem_permissao)
+
+        response = self.client.get('/api/admin/dashboard/')
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_anonymous_cannot_access_dashboard(self):
+        response = self.client.get('/api/admin/dashboard/')
+
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)

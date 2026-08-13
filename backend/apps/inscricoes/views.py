@@ -1,23 +1,28 @@
 import os
+from decimal import Decimal
 from io import BytesIO
 
 import qrcode
+from django.db.models import Sum
 from django.http import HttpResponse
 from rest_framework import generics, status
 from rest_framework.generics import get_object_or_404
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from apps.users.permissions import PodeAprovarPagamento, PodeRealizarCheckin
+from apps.lotes.models import Lote
+from apps.lotes.serializers import LoteSerializer
+from apps.users.permissions import IsAdminUser, PodeAprovarPagamento, PodeRealizarCheckin
 
 from .checkin import checkin_manual, checkin_via_qr
 from .ingresso import build_ingresso_pdf_bytes
-from .models import Inscricao
+from .models import Cupom, Inscricao
 from .notificacoes import enviar_ingresso_email_seguro
 from .pix import payload_pix_da_inscricao
 from .serializers import (
     AdminInscricaoQueueSerializer,
     ComprovanteUploadSerializer,
+    CupomAdminSerializer,
     InscricaoCreateSerializer,
     InscricaoStatusSerializer,
     RejeitarInscricaoSerializer,
@@ -125,6 +130,54 @@ class RejeitarInscricaoView(APIView):
         inscricao.save(update_fields=['status', 'motivo_rejeicao', 'atualizado_em'])
 
         return Response(AdminInscricaoQueueSerializer(inscricao).data)
+
+
+class CupomAdminListCreateView(generics.ListCreateAPIView):
+    permission_classes = [IsAdminUser]
+    queryset = Cupom.objects.all().order_by('codigo')
+    serializer_class = CupomAdminSerializer
+
+
+class CupomAdminDetailView(generics.RetrieveUpdateAPIView):
+    permission_classes = [IsAdminUser]
+    queryset = Cupom.objects.all()
+    serializer_class = CupomAdminSerializer
+
+
+class DashboardView(APIView):
+    permission_classes = [PodeAprovarPagamento]
+
+    def get(self, request):
+        inscricoes_validas = Inscricao.objects.exclude(status=Inscricao.Status.REJEITADA)
+        confirmadas = inscricoes_validas.filter(status=Inscricao.Status.CONFIRMADA)
+        aguardando_revisao = inscricoes_validas.filter(
+            status__in=[Inscricao.Status.PENDENTE, Inscricao.Status.COMPROVANTE_ENVIADO],
+        )
+        rejeitadas = Inscricao.objects.filter(status=Inscricao.Status.REJEITADA)
+
+        receita_confirmada = confirmadas.aggregate(total=Sum('preco_final'))['total'] or Decimal('0')
+        receita_pendente = aguardando_revisao.aggregate(total=Sum('preco_final'))['total'] or Decimal('0')
+
+        lote_ativo = Lote.objects.filter(ativo=True).first()
+
+        return Response({
+            'inscricoes': {
+                'confirmadas': confirmadas.count(),
+                'aguardando_revisao': aguardando_revisao.count(),
+                'rejeitadas': rejeitadas.count(),
+            },
+            'receita': {
+                # str(Decimal) não preserva casas decimais depois de Sum() em SQLite
+                # (ex.: 300 em vez de 300.00) — formata explicitamente.
+                'confirmada': f'{receita_confirmada:.2f}',
+                'pendente': f'{receita_pendente:.2f}',
+            },
+            'checkin': {
+                'feitos': confirmadas.filter(checkin_em__isnull=False).count(),
+                'confirmadas': confirmadas.count(),
+            },
+            'lote_ativo': LoteSerializer(lote_ativo).data if lote_ativo else None,
+        })
 
 
 class IngressoDownloadView(APIView):

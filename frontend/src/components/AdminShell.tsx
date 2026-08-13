@@ -1,11 +1,14 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
-import { ClipboardCheck, Flame, LogOut, Menu, QrCode, X } from 'lucide-react'
+import { BarChart3, ClipboardCheck, Flame, Layers, LogOut, Menu, QrCode, TicketPercent, X } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 
 const NAV_ITEMS = [
-  { to: '/admin/fila-aprovacao', label: 'Fila de aprovação', icon: ClipboardCheck },
-  { to: '/admin/checkin', label: 'Check-in', icon: QrCode },
+  { to: '/admin', label: 'Dashboard', icon: BarChart3, end: true },
+  { to: '/admin/fila-aprovacao', label: 'Fila de aprovação', icon: ClipboardCheck, end: false },
+  { to: '/admin/checkin', label: 'Check-in', icon: QrCode, end: false },
+  { to: '/admin/lotes', label: 'Lotes', icon: Layers, end: false },
+  { to: '/admin/cupons', label: 'Cupons', icon: TicketPercent, end: false },
 ]
 
 export function AdminShell({ children }: { children: ReactNode }) {
@@ -79,10 +82,11 @@ export function AdminShell({ children }: { children: ReactNode }) {
             </div>
 
             <nav className="flex flex-1 flex-col gap-1 px-3 py-4">
-              {NAV_ITEMS.map(({ to, label, icon: Icon }) => (
+              {NAV_ITEMS.map(({ to, label, icon: Icon, end }) => (
                 <NavLink
                   key={to}
                   to={to}
+                  end={end}
                   onClick={handleNavClick}
                   className={({ isActive }) =>
                     `flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors ${

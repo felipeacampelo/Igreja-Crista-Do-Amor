@@ -1,8 +1,11 @@
+from rest_framework import generics
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.users.permissions import IsAdminUser
+
 from .models import Lote
-from .serializers import LoteSerializer
+from .serializers import LoteAdminSerializer, LoteSerializer
 
 
 class LoteAtivoView(APIView):
@@ -13,3 +16,15 @@ class LoteAtivoView(APIView):
         if lote is None or lote.esgotado:
             return Response(None)
         return Response(LoteSerializer(lote).data)
+
+
+class LoteAdminListCreateView(generics.ListCreateAPIView):
+    permission_classes = [IsAdminUser]
+    queryset = Lote.objects.all()
+    serializer_class = LoteAdminSerializer
+
+
+class LoteAdminDetailView(generics.RetrieveUpdateAPIView):
+    permission_classes = [IsAdminUser]
+    queryset = Lote.objects.all()
+    serializer_class = LoteAdminSerializer

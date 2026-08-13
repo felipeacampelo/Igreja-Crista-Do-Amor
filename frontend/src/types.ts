@@ -39,3 +39,42 @@ export type CheckinResultado = {
   lote: string | null
   checkin_em: string | null
 }
+
+export type LoteAdmin = {
+  id: number
+  nome: string
+  preco: string
+  limite_vagas: number
+  ativo: boolean
+  vagas_ocupadas: number
+  vagas_restantes: number
+  esgotado: boolean
+  criado_em: string
+}
+
+export type CupomAdmin = {
+  id: number
+  codigo: string
+  valor_desconto: string
+  limite_usos: number
+  usos_count: number
+  esgotado: boolean
+  criado_em: string
+}
+
+export type DashboardStats = {
+  inscricoes: {
+    confirmadas: number
+    aguardando_revisao: number
+    rejeitadas: number
+  }
+  receita: {
+    confirmada: string
+    pendente: string
+  }
+  checkin: {
+    feitos: number
+    confirmadas: number
+  }
+  lote_ativo: Lote | null
+}

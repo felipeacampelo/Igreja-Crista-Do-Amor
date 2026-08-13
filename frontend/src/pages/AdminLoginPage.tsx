@@ -18,7 +18,7 @@ export function AdminLoginPage() {
 
     try {
       await login(email, password)
-      navigate('/admin/fila-aprovacao')
+      navigate('/admin')
     } catch {
       setErro('Email ou senha inválidos.')
     } finally {
