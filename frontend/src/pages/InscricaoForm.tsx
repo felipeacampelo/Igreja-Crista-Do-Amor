@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react'
-import { useNavigate, useSearchParams } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 import { AlertCircle } from 'lucide-react'
 import { PublicHeader } from '../components/PublicHeader'
 import { api, formatApiErrors } from '../services/api'
@@ -21,8 +21,8 @@ function calculaIdade(dataNascimento: string): number | null {
 
 export function InscricaoForm() {
   const navigate = useNavigate()
-  const [searchParams] = useSearchParams()
-  const [lotes, setLotes] = useState<Lote[]>([])
+  const [lote, setLote] = useState<Lote | null>(null)
+  const [carregado, setCarregado] = useState(false)
   const [errors, setErrors] = useState<string[]>([])
   const [submitting, setSubmitting] = useState(false)
 
@@ -32,7 +32,6 @@ export function InscricaoForm() {
   const [sexo, setSexo] = useState('F')
   const [dataNascimento, setDataNascimento] = useState('')
   const [celular, setCelular] = useState('')
-  const [loteId, setLoteId] = useState(searchParams.get('lote') ?? '')
   const [cupomCodigo, setCupomCodigo] = useState('')
   const [nomeResponsavel, setNomeResponsavel] = useState('')
   const [celularResponsavel, setCelularResponsavel] = useState('')
@@ -41,11 +40,16 @@ export function InscricaoForm() {
   const menorDeIdade = idade !== null && idade < 18
 
   useEffect(() => {
-    api.get<Lote[]>('/api/lotes/').then((response) => setLotes(response.data))
+    api
+      .get<Lote | null>('/api/lotes/')
+      .then((response) => setLote(response.data))
+      .finally(() => setCarregado(true))
   }, [])
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault()
+    if (!lote) return
+
     setErrors([])
     setSubmitting(true)
 
@@ -57,7 +61,7 @@ export function InscricaoForm() {
         sexo,
         data_nascimento: dataNascimento,
         celular,
-        lote: loteId,
+        lote: lote.id,
         cupom_codigo: cupomCodigo,
         nome_responsavel: menorDeIdade ? nomeResponsavel : '',
         celular_responsavel: menorDeIdade ? celularResponsavel : '',
@@ -80,6 +84,22 @@ export function InscricaoForm() {
           <h1 className="text-2xl font-bold text-gray-900 sm:text-3xl">Inscreva-se na Fire Conference</h1>
           <p className="mt-2 text-sm text-gray-600">Preencha seus dados para garantir sua vaga.</p>
         </div>
+
+        {carregado && !lote && (
+          <div className="card mb-6 border-2 border-gray-200 text-center text-gray-600">
+            As inscrições estão fechadas no momento. Volte em breve.
+          </div>
+        )}
+
+        {lote && (
+          <div className="mb-6 flex items-center justify-between rounded-lg border-2 border-flame bg-white px-5 py-4">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-flame">Lote vigente</p>
+              <p className="text-lg font-bold text-gray-900">{lote.nome}</p>
+            </div>
+            <p className="text-2xl font-bold text-flame">R$ {lote.preco}</p>
+          </div>
+        )}
 
         <form onSubmit={handleSubmit} className="card space-y-6">
           <div className="grid gap-4 sm:grid-cols-2">
@@ -138,25 +158,6 @@ export function InscricaoForm() {
               />
             </div>
 
-            <div>
-              <label className="field-label">Lote</label>
-              <select
-                className="field-input"
-                value={loteId}
-                onChange={(e) => setLoteId(e.target.value)}
-                required
-              >
-                <option value="" disabled>
-                  Selecione um lote
-                </option>
-                {lotes.map((lote) => (
-                  <option key={lote.id} value={lote.id}>
-                    {lote.nome} — R$ {lote.preco} ({lote.vagas_restantes} vagas)
-                  </option>
-                ))}
-              </select>
-            </div>
-
             <div className="sm:col-span-2">
               <label className="field-label">Cupom (opcional)</label>
               <input
@@ -206,7 +207,11 @@ export function InscricaoForm() {
             </div>
           )}
 
-          <button type="submit" disabled={submitting} className="btn-primary w-full disabled:opacity-50">
+          <button
+            type="submit"
+            disabled={submitting || !lote}
+            className="btn-primary w-full disabled:opacity-50"
+          >
             {submitting ? 'Enviando...' : 'Inscrever-se'}
           </button>
         </form>

@@ -11,8 +11,8 @@ const DATA_EVENTO = new Date('2026-10-16T00:00:00')
 const PASSOS = [
   {
     icon: Wallet,
-    titulo: 'Escolha seu lote',
-    texto: 'Selecione um lote disponível e preencha seus dados — sem precisar criar conta.',
+    titulo: 'Inscreva-se',
+    texto: 'Preencha seus dados no lote vigente — sem precisar criar conta.',
   },
   {
     icon: QrCode,
@@ -28,13 +28,15 @@ const PASSOS = [
 
 export function Home() {
   const navigate = useNavigate()
-  const [lotes, setLotes] = useState<Lote[]>([])
+  const [lote, setLote] = useState<Lote | null>(null)
+  const [carregado, setCarregado] = useState(false)
 
   useEffect(() => {
-    api.get<Lote[]>('/api/lotes/').then((response) => setLotes(response.data))
+    api
+      .get<Lote | null>('/api/lotes/')
+      .then((response) => setLote(response.data))
+      .finally(() => setCarregado(true))
   }, [])
-
-  const menorPreco = lotes.length > 0 ? Math.min(...lotes.map((lote) => Number(lote.preco))) : null
 
   return (
     <div className="min-h-screen">
@@ -90,41 +92,33 @@ export function Home() {
         </div>
       </section>
 
-      {lotes.length > 0 && (
+      {carregado && (
         <section id="inscricao" className="bg-gray-50 py-16">
-          <div className="mx-auto max-w-5xl px-4">
+          <div className="mx-auto max-w-md px-4">
             <div className="mb-12 text-center">
               <h2 className="mb-4 text-3xl font-bold text-gray-900">Valores e inscrição</h2>
-              <p className="text-lg text-gray-600">Escolha o lote e garanta sua vaga.</p>
+              <p className="text-lg text-gray-600">
+                {lote ? 'Lote vigente — garanta sua vaga.' : 'Nenhum lote disponível no momento.'}
+              </p>
             </div>
 
-            <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-              {lotes.map((lote) => {
-                const esgotado = lote.vagas_restantes <= 0
-                const melhorPreco = !esgotado && Number(lote.preco) === menorPreco
-                return (
-                  <div key={lote.id} className="card border-2 border-flame text-center">
-                    {melhorPreco && (
-                      <div className="mb-4 inline-block rounded-full bg-ember px-4 py-1 text-sm font-semibold text-black">
-                        Melhor preço
-                      </div>
-                    )}
-                    <h3 className="mb-2 text-2xl font-bold text-gray-900">{lote.nome}</h3>
-                    <div className="mb-4 text-4xl font-bold text-flame">R$ {lote.preco}</div>
-                    <p className="mb-6 text-sm text-gray-600">
-                      {esgotado ? 'Vagas esgotadas' : `${lote.vagas_restantes} vaga(s) restante(s)`}
-                    </p>
-                    <button
-                      onClick={() => navigate(`/inscricao?lote=${lote.id}`)}
-                      disabled={esgotado}
-                      className="btn-primary w-full disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      {esgotado ? 'Esgotado' : 'Inscrever-se'}
-                    </button>
-                  </div>
-                )
-              })}
-            </div>
+            {lote ? (
+              <div className="card border-2 border-flame text-center">
+                <div className="mb-4 inline-block rounded-full bg-ember px-4 py-1 text-sm font-semibold text-black">
+                  Lote vigente
+                </div>
+                <h3 className="mb-2 text-2xl font-bold text-gray-900">{lote.nome}</h3>
+                <div className="mb-4 text-4xl font-bold text-flame">R$ {lote.preco}</div>
+                <p className="mb-6 text-sm text-gray-600">{lote.vagas_restantes} vaga(s) restante(s)</p>
+                <button onClick={() => navigate('/inscricao')} className="btn-primary w-full">
+                  Inscrever-se
+                </button>
+              </div>
+            ) : (
+              <div className="card border-2 border-gray-200 text-center text-gray-600">
+                As inscrições estão fechadas no momento. Volte em breve.
+              </div>
+            )}
           </div>
         </section>
       )}

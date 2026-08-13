@@ -1,7 +1,7 @@
 from django.urls import path
 
-from .views import LoteListView
+from .views import LoteAtivoView
 
 urlpatterns = [
-    path('', LoteListView.as_view(), name='lote-list'),
+    path('', LoteAtivoView.as_view(), name='lote-ativo'),
 ]

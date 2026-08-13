@@ -23,6 +23,14 @@ class Lote(models.Model):
     def __str__(self):
         return self.nome
 
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+        if self.ativo:
+            # Só um lote fica ativo por vez — quem decide qual é o admin, não o
+            # inscrito (replica o padrão de Batch.save() do AreaMais: ativar um
+            # lote desativa automaticamente os demais).
+            Lote.objects.filter(ativo=True).exclude(pk=self.pk).update(ativo=False)
+
     @property
     def vagas_ocupadas(self):
         # Import local para evitar import circular: apps.inscricoes já importa Lote.
