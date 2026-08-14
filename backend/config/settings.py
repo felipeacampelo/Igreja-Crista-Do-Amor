@@ -13,6 +13,17 @@ SECRET_KEY = config('DJANGO_SECRET_KEY', default='django-insecure-change-this-in
 DEBUG = config('DJANGO_DEBUG', default=True, cast=bool)
 ALLOWED_HOSTS = config('DJANGO_ALLOWED_HOSTS', default='localhost,127.0.0.1', cast=Csv())
 
+# Railway (como Heroku) termina o TLS no proxy e encaminha pro app por HTTP
+# simples com esse header — sem isso, request.is_secure() dá False mesmo em
+# HTTPS, e o CSRF do Django rejeita todo POST (ex: login do admin) porque o
+# esquema que ele calcula (http) não bate com o Origin que o navegador manda
+# (https).
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+
+# Origens explicitamente confiáveis pra CSRF — precisa do próprio domínio do
+# backend (é ele que serve o formulário de login do /admin/).
+CSRF_TRUSTED_ORIGINS = config('CSRF_TRUSTED_ORIGINS', default='', cast=Csv())
+
 INSTALLED_APPS = [
     'django.contrib.admin',
     'django.contrib.auth',
