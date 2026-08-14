@@ -1,5 +1,11 @@
+import importlib
+import os
+from unittest.mock import patch
+
+from django.apps import apps as django_apps
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Permission
+from django.test import TestCase
 from rest_framework import status
 from rest_framework.authtoken.models import Token
 from rest_framework.response import Response
@@ -9,6 +15,10 @@ from rest_framework.views import APIView
 from .permissions import PodeAprovarPagamento, PodeRealizarCheckin
 
 User = get_user_model()
+
+# Nome do módulo começa com dígito — não dá pra usar `from .migrations.0002... import`
+# (não é um identificador Python válido); carrega via importlib, igual o Django faz.
+_migracao_admin_inicial = importlib.import_module('apps.users.migrations.0002_criar_admin_inicial')
 
 
 class LoginTests(APITestCase):
@@ -101,3 +111,39 @@ class PermissionMechanismTests(APITestCase):
         response = self._get(PodeRealizarCheckin, user=staff)
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+
+class CriarAdminInicialMigrationTests(TestCase):
+    def _roda(self):
+        _migracao_admin_inicial.criar_admin_inicial(django_apps, None)
+
+    def test_creates_superuser_when_env_vars_are_set(self):
+        with patch.dict('os.environ', {
+            'DJANGO_ADMIN_EMAIL': 'admin-bootstrap@fireconference.local',
+            'DJANGO_ADMIN_PASSWORD': 'senha-forte-123',
+        }):
+            self._roda()
+
+        user = User.objects.get(email='admin-bootstrap@fireconference.local')
+        self.assertTrue(user.is_staff)
+        self.assertTrue(user.is_superuser)
+        self.assertTrue(user.check_password('senha-forte-123'))
+
+    def test_does_nothing_when_env_vars_are_missing(self):
+        with patch.dict('os.environ', {}, clear=False):
+            os.environ.pop('DJANGO_ADMIN_EMAIL', None)
+            os.environ.pop('DJANGO_ADMIN_PASSWORD', None)
+            self._roda()
+
+        self.assertFalse(User.objects.exists())
+
+    def test_does_not_duplicate_when_user_already_exists(self):
+        User.objects.create_user(email='admin-bootstrap@fireconference.local', password='outra-senha')
+
+        with patch.dict('os.environ', {
+            'DJANGO_ADMIN_EMAIL': 'admin-bootstrap@fireconference.local',
+            'DJANGO_ADMIN_PASSWORD': 'senha-forte-123',
+        }):
+            self._roda()
+
+        self.assertEqual(User.objects.filter(email='admin-bootstrap@fireconference.local').count(), 1)
