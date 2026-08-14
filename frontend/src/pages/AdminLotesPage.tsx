@@ -11,6 +11,7 @@ export function AdminLotesPage() {
   const [salvando, setSalvando] = useState(false)
   const [erroExclusao, setErroExclusao] = useState<string | null>(null)
   const [excluindoId, setExcluindoId] = useState<number | null>(null)
+  const [confirmandoId, setConfirmandoId] = useState<number | null>(null)
 
   const [nome, setNome] = useState('')
   const [preco, setPreco] = useState('')
@@ -60,11 +61,10 @@ export function AdminLotesPage() {
     carregarLotes()
   }
 
-  async function excluirLote(id: number, nome: string) {
-    if (!window.confirm(`Excluir o lote "${nome}"? Essa ação não pode ser desfeita.`)) return
-
+  async function excluirLote(id: number) {
     setErroExclusao(null)
     setExcluindoId(id)
+    setConfirmandoId(null)
 
     try {
       await adminApi.delete(`/api/admin/lotes/${id}/`)
@@ -176,21 +176,41 @@ export function AdminLotesPage() {
               </p>
             </div>
             <div className="flex items-center gap-2">
-              {!lote.ativo && (
+              {!lote.ativo && confirmandoId !== lote.id && (
                 <button type="button" onClick={() => ativarLote(lote.id)} className="btn-secondary">
                   Ativar
                 </button>
               )}
-              <button
-                type="button"
-                onClick={() => excluirLote(lote.id, lote.nome)}
-                disabled={excluindoId === lote.id}
-                title="Excluir lote"
-                className="inline-flex items-center gap-1 rounded-lg border border-red-200 px-3 py-2 text-sm font-semibold text-red-600 transition-colors hover:bg-red-50 disabled:opacity-50"
-              >
-                <Trash2 className="h-4 w-4" />
-                {excluindoId === lote.id ? 'Excluindo...' : 'Excluir'}
-              </button>
+              {confirmandoId === lote.id ? (
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-gray-700">Confirmar exclusão?</span>
+                  <button
+                    type="button"
+                    onClick={() => excluirLote(lote.id)}
+                    disabled={excluindoId === lote.id}
+                    className="rounded-lg bg-red-600 px-3 py-2 text-sm font-semibold text-white transition-colors hover:bg-red-700 disabled:opacity-50"
+                  >
+                    {excluindoId === lote.id ? 'Excluindo...' : 'Sim, excluir'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setConfirmandoId(null)}
+                    className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-semibold text-gray-700 transition-colors hover:bg-gray-50"
+                  >
+                    Cancelar
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setConfirmandoId(lote.id)}
+                  title="Excluir lote"
+                  className="inline-flex items-center gap-1 rounded-lg border border-red-200 px-3 py-2 text-sm font-semibold text-red-600 transition-colors hover:bg-red-50"
+                >
+                  <Trash2 className="h-4 w-4" />
+                  Excluir
+                </button>
+              )}
             </div>
           </div>
         ))}

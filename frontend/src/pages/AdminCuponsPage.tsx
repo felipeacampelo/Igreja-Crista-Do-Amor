@@ -11,6 +11,7 @@ export function AdminCuponsPage() {
   const [salvando, setSalvando] = useState(false)
   const [erroExclusao, setErroExclusao] = useState<string | null>(null)
   const [excluindoId, setExcluindoId] = useState<number | null>(null)
+  const [confirmandoId, setConfirmandoId] = useState<number | null>(null)
 
   const [codigo, setCodigo] = useState('')
   const [valorDesconto, setValorDesconto] = useState('')
@@ -55,11 +56,10 @@ export function AdminCuponsPage() {
     }
   }
 
-  async function excluirCupom(id: number, codigo: string) {
-    if (!window.confirm(`Excluir o cupom "${codigo}"? Essa ação não pode ser desfeita.`)) return
-
+  async function excluirCupom(id: number) {
     setErroExclusao(null)
     setExcluindoId(id)
+    setConfirmandoId(null)
 
     try {
       await adminApi.delete(`/api/admin/cupons/${id}/`)
@@ -163,16 +163,36 @@ export function AdminCuponsPage() {
                 Desconto de R$ {cupom.valor_desconto} · {cupom.usos_count}/{cupom.limite_usos} usos
               </p>
             </div>
-            <button
-              type="button"
-              onClick={() => excluirCupom(cupom.id, cupom.codigo)}
-              disabled={excluindoId === cupom.id}
-              title="Excluir cupom"
-              className="inline-flex items-center gap-1 rounded-lg border border-red-200 px-3 py-2 text-sm font-semibold text-red-600 transition-colors hover:bg-red-50 disabled:opacity-50"
-            >
-              <Trash2 className="h-4 w-4" />
-              {excluindoId === cupom.id ? 'Excluindo...' : 'Excluir'}
-            </button>
+            {confirmandoId === cupom.id ? (
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-gray-700">Confirmar exclusão?</span>
+                <button
+                  type="button"
+                  onClick={() => excluirCupom(cupom.id)}
+                  disabled={excluindoId === cupom.id}
+                  className="rounded-lg bg-red-600 px-3 py-2 text-sm font-semibold text-white transition-colors hover:bg-red-700 disabled:opacity-50"
+                >
+                  {excluindoId === cupom.id ? 'Excluindo...' : 'Sim, excluir'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setConfirmandoId(null)}
+                  className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-semibold text-gray-700 transition-colors hover:bg-gray-50"
+                >
+                  Cancelar
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setConfirmandoId(cupom.id)}
+                title="Excluir cupom"
+                className="inline-flex items-center gap-1 rounded-lg border border-red-200 px-3 py-2 text-sm font-semibold text-red-600 transition-colors hover:bg-red-50"
+              >
+                <Trash2 className="h-4 w-4" />
+                Excluir
+              </button>
+            )}
           </div>
         ))}
       </div>
