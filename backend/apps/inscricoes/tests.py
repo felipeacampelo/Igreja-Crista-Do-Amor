@@ -128,6 +128,57 @@ class InscricaoCreateTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn('lote', response.data)
 
+    def test_cpf_with_fewer_than_11_digits_is_rejected(self):
+        response = self.client.post('/api/inscricoes/', self.payload(cpf='111.111.111-1'))
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('cpf', response.data)
+
+    def test_cpf_formatted_with_11_digits_is_accepted(self):
+        response = self.client.post('/api/inscricoes/', self.payload(cpf='222.333.444-55'))
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+    def test_celular_with_fewer_than_11_digits_is_rejected(self):
+        response = self.client.post('/api/inscricoes/', self.payload(celular='(11) 9999-8888'))
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('celular', response.data)
+
+    def test_celular_formatted_with_11_digits_is_accepted(self):
+        response = self.client.post('/api/inscricoes/', self.payload(celular='(12) 93456-7890'))
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+    def test_celular_responsavel_with_fewer_than_11_digits_is_rejected(self):
+        response = self.client.post('/api/inscricoes/', self.payload(
+            data_nascimento=data_nascimento_com_idade(16).isoformat(),
+            nome_responsavel='Ana Silva',
+            celular_responsavel='11 98888777',
+        ))
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('celular_responsavel', response.data)
+
+    def test_future_data_nascimento_is_rejected(self):
+        amanha = (date.today() + timedelta(days=1)).isoformat()
+
+        response = self.client.post('/api/inscricoes/', self.payload(data_nascimento=amanha))
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('data_nascimento', response.data)
+
+    def test_today_as_data_nascimento_is_accepted(self):
+        # Nascido hoje ainda é menor de idade (idade 0), então precisa dos
+        # dados do responsável — o que valida aqui é só a data em si.
+        response = self.client.post('/api/inscricoes/', self.payload(
+            data_nascimento=date.today().isoformat(),
+            nome_responsavel='Ana Silva',
+            celular_responsavel='11988887777',
+        ))
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
 
 class CodigoCheckinGeracaoTests(TestCase):
     def setUp(self):
@@ -774,8 +825,8 @@ class ImportacaoPlanilhaTests(TestCase):
 
     def test_imported_inscricao_counts_toward_lote_vagas(self):
         importar_linhas([
-            self._linha(cpf='111', email='um@example.com'),
-            self._linha(cpf='222', email='dois@example.com'),
+            self._linha(cpf='11111111111', email='um@example.com'),
+            self._linha(cpf='22222222222', email='dois@example.com'),
         ])
 
         self.assertEqual(self.lote.vagas_ocupadas, 2)
@@ -783,14 +834,14 @@ class ImportacaoPlanilhaTests(TestCase):
 
     def test_row_beyond_lote_limit_is_reported_as_error_not_created(self):
         resultado = importar_linhas([
-            self._linha(cpf='111', email='um@example.com'),
-            self._linha(cpf='222', email='dois@example.com'),
-            self._linha(cpf='333', email='tres@example.com'),  # limite_vagas=2
+            self._linha(cpf='11111111111', email='um@example.com'),
+            self._linha(cpf='22222222222', email='dois@example.com'),
+            self._linha(cpf='33333333333', email='tres@example.com'),  # limite_vagas=2
         ])
 
         self.assertEqual(resultado.importadas, 2)
         self.assertEqual(resultado.com_erro, 1)
-        self.assertFalse(Inscricao.objects.filter(cpf='333').exists())
+        self.assertFalse(Inscricao.objects.filter(cpf='33333333333').exists())
 
     def test_reimporting_same_file_is_idempotent(self):
         linha = self._linha()
@@ -826,8 +877,8 @@ class ImportacaoPlanilhaTests(TestCase):
             # exceção tivesse propagado e derrubado o loop inteiro).
             with patch('apps.inscricoes.importacao.enviar_ingresso_email_seguro'):
                 resultado = importar_linhas([
-                    self._linha(cpf='111', email='um@example.com'),
-                    self._linha(cpf='222', email='dois@example.com'),
+                    self._linha(cpf='11111111111', email='um@example.com'),
+                    self._linha(cpf='22222222222', email='dois@example.com'),
                 ])
 
         self.assertEqual(resultado.com_erro, 1)
@@ -876,9 +927,9 @@ class ImportacaoPlanilhaTests(TestCase):
         # do banco) não veria essas linhas sozinho — sem o contador em memória, as
         # 3 linhas passariam como válidas mesmo violando o limite do lote.
         resultado = importar_linhas([
-            self._linha(cpf='111', email='um@example.com'),
-            self._linha(cpf='222', email='dois@example.com'),
-            self._linha(cpf='333', email='tres@example.com'),
+            self._linha(cpf='11111111111', email='um@example.com'),
+            self._linha(cpf='22222222222', email='dois@example.com'),
+            self._linha(cpf='33333333333', email='tres@example.com'),
         ], dry_run=True)
 
         self.assertEqual(resultado.importadas, 2)
@@ -889,8 +940,8 @@ class ImportacaoPlanilhaTests(TestCase):
         Cupom.objects.create(codigo='SERVIR', valor_desconto=Decimal('50.00'), limite_usos=1)
 
         resultado = importar_linhas([
-            self._linha(cpf='111', email='um@example.com', cupom_codigo='servir'),
-            self._linha(cpf='222', email='dois@example.com', cupom_codigo='servir'),
+            self._linha(cpf='11111111111', email='um@example.com', cupom_codigo='servir'),
+            self._linha(cpf='22222222222', email='dois@example.com', cupom_codigo='servir'),
         ], dry_run=True)
 
         self.assertEqual(resultado.importadas, 1)

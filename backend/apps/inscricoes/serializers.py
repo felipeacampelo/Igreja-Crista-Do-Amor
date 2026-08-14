@@ -1,3 +1,4 @@
+import re
 from datetime import date
 from decimal import Decimal
 
@@ -18,6 +19,10 @@ def _calcula_idade(data_nascimento, hoje=None):
     )
 
 
+def _conta_digitos(valor):
+    return len(re.sub(r'\D', '', valor or ''))
+
+
 class InscricaoCreateSerializer(serializers.ModelSerializer):
     cupom_codigo = serializers.CharField(required=False, allow_blank=True, write_only=True)
 
@@ -36,13 +41,33 @@ class InscricaoCreateSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError('Lote esgotado.')
         return lote
 
+    def validate_cpf(self, value):
+        if _conta_digitos(value) != 11:
+            raise serializers.ValidationError('CPF deve ter 11 dígitos.')
+        return value
+
+    def validate_celular(self, value):
+        if _conta_digitos(value) != 11:
+            raise serializers.ValidationError('Celular deve ter 11 dígitos (DDD + número).')
+        return value
+
+    def validate_data_nascimento(self, value):
+        if value > date.today():
+            raise serializers.ValidationError('Data de nascimento não pode ser uma data futura.')
+        return value
+
     def validate(self, attrs):
         idade = _calcula_idade(attrs['data_nascimento'])
-        if idade < 18 and (not attrs.get('nome_responsavel') or not attrs.get('celular_responsavel')):
-            raise serializers.ValidationError({
-                'nome_responsavel': 'Obrigatório para inscritos menores de idade.',
-                'celular_responsavel': 'Obrigatório para inscritos menores de idade.',
-            })
+        if idade < 18:
+            if not attrs.get('nome_responsavel') or not attrs.get('celular_responsavel'):
+                raise serializers.ValidationError({
+                    'nome_responsavel': 'Obrigatório para inscritos menores de idade.',
+                    'celular_responsavel': 'Obrigatório para inscritos menores de idade.',
+                })
+            if _conta_digitos(attrs['celular_responsavel']) != 11:
+                raise serializers.ValidationError(
+                    {'celular_responsavel': 'Celular deve ter 11 dígitos (DDD + número).'}
+                )
 
         cupom_codigo = attrs.pop('cupom_codigo', '')
         if cupom_codigo:

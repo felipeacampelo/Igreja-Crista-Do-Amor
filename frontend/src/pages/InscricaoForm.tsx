@@ -19,6 +19,25 @@ function calculaIdade(dataNascimento: string): number | null {
   return idade
 }
 
+function formatCpf(valor: string): string {
+  const digitos = valor.replace(/\D/g, '').slice(0, 11)
+  if (digitos.length > 9) return digitos.replace(/(\d{3})(\d{3})(\d{3})(\d{1,2})/, '$1.$2.$3-$4')
+  if (digitos.length > 6) return digitos.replace(/(\d{3})(\d{3})(\d{1,3})/, '$1.$2.$3')
+  if (digitos.length > 3) return digitos.replace(/(\d{3})(\d{1,3})/, '$1.$2')
+  return digitos
+}
+
+function formatCelular(valor: string): string {
+  const digitos = valor.replace(/\D/g, '').slice(0, 11)
+  if (digitos.length > 7) return digitos.replace(/(\d{2})(\d{5})(\d{1,4})/, '($1) $2-$3')
+  if (digitos.length > 2) return digitos.replace(/(\d{2})(\d{1,5})/, '($1) $2')
+  return digitos
+}
+
+function hojeISO(): string {
+  return new Date().toISOString().slice(0, 10)
+}
+
 export function InscricaoForm() {
   const navigate = useNavigate()
   const [lote, setLote] = useState<Lote | null>(null)
@@ -49,6 +68,11 @@ export function InscricaoForm() {
   async function handleSubmit(event: FormEvent) {
     event.preventDefault()
     if (!lote) return
+
+    if (dataNascimento > hojeISO()) {
+      setErrors(['Data de nascimento não pode ser uma data futura.'])
+      return
+    }
 
     setErrors([])
     setSubmitting(true)
@@ -115,7 +139,15 @@ export function InscricaoForm() {
 
             <div>
               <label className="field-label">CPF</label>
-              <input className="field-input" value={cpf} onChange={(e) => setCpf(e.target.value)} required />
+              <input
+                className="field-input"
+                value={cpf}
+                onChange={(e) => setCpf(formatCpf(e.target.value))}
+                inputMode="numeric"
+                placeholder="000.000.000-00"
+                maxLength={14}
+                required
+              />
             </div>
 
             <div>
@@ -144,6 +176,7 @@ export function InscricaoForm() {
                 className="field-input"
                 value={dataNascimento}
                 onChange={(e) => setDataNascimento(e.target.value)}
+                max={hojeISO()}
                 required
               />
             </div>
@@ -153,7 +186,10 @@ export function InscricaoForm() {
               <input
                 className="field-input"
                 value={celular}
-                onChange={(e) => setCelular(e.target.value)}
+                onChange={(e) => setCelular(formatCelular(e.target.value))}
+                inputMode="numeric"
+                placeholder="(12) 93456-7890"
+                maxLength={15}
                 required
               />
             </div>
@@ -188,7 +224,10 @@ export function InscricaoForm() {
                   <input
                     className="field-input"
                     value={celularResponsavel}
-                    onChange={(e) => setCelularResponsavel(e.target.value)}
+                    onChange={(e) => setCelularResponsavel(formatCelular(e.target.value))}
+                    inputMode="numeric"
+                    placeholder="(12) 93456-7890"
+                    maxLength={15}
                     required
                   />
                 </div>
