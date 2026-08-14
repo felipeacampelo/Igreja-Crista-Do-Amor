@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react'
-import { AlertCircle } from 'lucide-react'
+import { AlertCircle, Trash2 } from 'lucide-react'
 import { AdminShell } from '../components/AdminShell'
 import { adminApi, formatApiErrors } from '../services/api'
 import type { CupomAdmin } from '../types'
@@ -9,6 +9,8 @@ export function AdminCuponsPage() {
   const [semPermissao, setSemPermissao] = useState(false)
   const [erros, setErros] = useState<string[]>([])
   const [salvando, setSalvando] = useState(false)
+  const [erroExclusao, setErroExclusao] = useState<string | null>(null)
+  const [excluindoId, setExcluindoId] = useState<number | null>(null)
 
   const [codigo, setCodigo] = useState('')
   const [valorDesconto, setValorDesconto] = useState('')
@@ -50,6 +52,23 @@ export function AdminCuponsPage() {
       setErros(formatApiErrors(data))
     } finally {
       setSalvando(false)
+    }
+  }
+
+  async function excluirCupom(id: number, codigo: string) {
+    if (!window.confirm(`Excluir o cupom "${codigo}"? Essa ação não pode ser desfeita.`)) return
+
+    setErroExclusao(null)
+    setExcluindoId(id)
+
+    try {
+      await adminApi.delete(`/api/admin/cupons/${id}/`)
+      carregarCupons()
+    } catch (error: unknown) {
+      const data = (error as { response?: { data?: unknown } })?.response?.data
+      setErroExclusao(formatApiErrors(data)[0] ?? 'Não foi possível excluir o cupom.')
+    } finally {
+      setExcluindoId(null)
     }
   }
 
@@ -120,6 +139,13 @@ export function AdminCuponsPage() {
         )}
       </div>
 
+      {erroExclusao && (
+        <div className="mb-4 flex items-start gap-3 rounded-lg border border-red-200 bg-red-50 p-4">
+          <AlertCircle className="mt-0.5 h-5 w-5 flex-shrink-0 text-red-600" />
+          <p className="text-sm text-red-800">{erroExclusao}</p>
+        </div>
+      )}
+
       <div className="space-y-3">
         {cupons.length === 0 && <div className="card text-center text-gray-600">Nenhum cupom cadastrado.</div>}
         {cupons.map((cupom) => (
@@ -137,6 +163,16 @@ export function AdminCuponsPage() {
                 Desconto de R$ {cupom.valor_desconto} · {cupom.usos_count}/{cupom.limite_usos} usos
               </p>
             </div>
+            <button
+              type="button"
+              onClick={() => excluirCupom(cupom.id, cupom.codigo)}
+              disabled={excluindoId === cupom.id}
+              title="Excluir cupom"
+              className="inline-flex items-center gap-1 rounded-lg border border-red-200 px-3 py-2 text-sm font-semibold text-red-600 transition-colors hover:bg-red-50 disabled:opacity-50"
+            >
+              <Trash2 className="h-4 w-4" />
+              {excluindoId === cupom.id ? 'Excluindo...' : 'Excluir'}
+            </button>
           </div>
         ))}
       </div>

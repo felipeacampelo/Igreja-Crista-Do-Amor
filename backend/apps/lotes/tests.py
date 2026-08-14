@@ -108,6 +108,31 @@ class LoteAdminApiTests(APITestCase):
         primeiro.refresh_from_db()
         self.assertFalse(primeiro.ativo)
 
+    def test_delete_lote_without_inscricoes(self):
+        lote = Lote.objects.create(nome='Lote 1', preco=Decimal('100.00'), limite_vagas=50)
+        self._auth(self.staff)
+
+        response = self.client.delete(f'/api/admin/lotes/{lote.id}/')
+
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertFalse(Lote.objects.filter(id=lote.id).exists())
+
+    def test_delete_lote_with_inscricoes_is_blocked(self):
+        from apps.inscricoes.models import Inscricao
+
+        lote = Lote.objects.create(nome='Lote 1', preco=Decimal('100.00'), limite_vagas=50)
+        Inscricao.objects.create(
+            nome_completo='Maria Silva', cpf='111', email='maria@example.com', sexo='F',
+            data_nascimento='1990-01-01', celular='11999990000',
+            lote=lote, preco_final=Decimal('100.00'),
+        )
+        self._auth(self.staff)
+
+        response = self.client.delete(f'/api/admin/lotes/{lote.id}/')
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertTrue(Lote.objects.filter(id=lote.id).exists())
+
     def test_non_staff_user_cannot_manage_lotes(self):
         self._auth(self.sem_permissao)
 

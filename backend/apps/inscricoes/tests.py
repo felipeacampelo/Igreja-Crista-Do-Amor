@@ -958,6 +958,30 @@ class CupomAdminApiTests(APITestCase):
         cupom.refresh_from_db()
         self.assertEqual(cupom.limite_usos, 10)
 
+    def test_delete_cupom_without_inscricoes(self):
+        cupom = Cupom.objects.create(codigo='SERVIR', valor_desconto=Decimal('20.00'), limite_usos=5)
+        self._auth(self.staff)
+
+        response = self.client.delete(f'/api/admin/cupons/{cupom.id}/')
+
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertFalse(Cupom.objects.filter(id=cupom.id).exists())
+
+    def test_delete_cupom_with_inscricoes_is_blocked(self):
+        cupom = Cupom.objects.create(codigo='SERVIR', valor_desconto=Decimal('20.00'), limite_usos=5)
+        lote = Lote.objects.create(nome='Lote 1', preco=Decimal('150.00'), limite_vagas=10)
+        Inscricao.objects.create(
+            nome_completo='Maria Silva', cpf='111', email='maria@example.com', sexo='F',
+            data_nascimento=data_nascimento_com_idade(25), celular='11999990000',
+            lote=lote, cupom=cupom, preco_final=Decimal('130.00'),
+        )
+        self._auth(self.staff)
+
+        response = self.client.delete(f'/api/admin/cupons/{cupom.id}/')
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertTrue(Cupom.objects.filter(id=cupom.id).exists())
+
     def test_non_staff_user_cannot_manage_cupons(self):
         self._auth(self.sem_permissao)
 

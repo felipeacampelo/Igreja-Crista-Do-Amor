@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react'
-import { AlertCircle, Check } from 'lucide-react'
+import { AlertCircle, Check, Trash2 } from 'lucide-react'
 import { AdminShell } from '../components/AdminShell'
 import { adminApi, formatApiErrors } from '../services/api'
 import type { LoteAdmin } from '../types'
@@ -9,6 +9,8 @@ export function AdminLotesPage() {
   const [semPermissao, setSemPermissao] = useState(false)
   const [erros, setErros] = useState<string[]>([])
   const [salvando, setSalvando] = useState(false)
+  const [erroExclusao, setErroExclusao] = useState<string | null>(null)
+  const [excluindoId, setExcluindoId] = useState<number | null>(null)
 
   const [nome, setNome] = useState('')
   const [preco, setPreco] = useState('')
@@ -56,6 +58,23 @@ export function AdminLotesPage() {
   async function ativarLote(id: number) {
     await adminApi.patch(`/api/admin/lotes/${id}/`, { ativo: true })
     carregarLotes()
+  }
+
+  async function excluirLote(id: number, nome: string) {
+    if (!window.confirm(`Excluir o lote "${nome}"? Essa ação não pode ser desfeita.`)) return
+
+    setErroExclusao(null)
+    setExcluindoId(id)
+
+    try {
+      await adminApi.delete(`/api/admin/lotes/${id}/`)
+      carregarLotes()
+    } catch (error: unknown) {
+      const data = (error as { response?: { data?: unknown } })?.response?.data
+      setErroExclusao(formatApiErrors(data)[0] ?? 'Não foi possível excluir o lote.')
+    } finally {
+      setExcluindoId(null)
+    }
   }
 
   if (semPermissao) {
@@ -127,6 +146,13 @@ export function AdminLotesPage() {
         )}
       </div>
 
+      {erroExclusao && (
+        <div className="mb-4 flex items-start gap-3 rounded-lg border border-red-200 bg-red-50 p-4">
+          <AlertCircle className="mt-0.5 h-5 w-5 flex-shrink-0 text-red-600" />
+          <p className="text-sm text-red-800">{erroExclusao}</p>
+        </div>
+      )}
+
       <div className="space-y-3">
         {lotes.map((lote) => (
           <div key={lote.id} className="card flex flex-wrap items-center justify-between gap-4">
@@ -149,11 +175,23 @@ export function AdminLotesPage() {
                 R$ {lote.preco} · {lote.vagas_ocupadas}/{lote.limite_vagas} vagas ocupadas
               </p>
             </div>
-            {!lote.ativo && (
-              <button type="button" onClick={() => ativarLote(lote.id)} className="btn-secondary">
-                Ativar
+            <div className="flex items-center gap-2">
+              {!lote.ativo && (
+                <button type="button" onClick={() => ativarLote(lote.id)} className="btn-secondary">
+                  Ativar
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => excluirLote(lote.id, lote.nome)}
+                disabled={excluindoId === lote.id}
+                title="Excluir lote"
+                className="inline-flex items-center gap-1 rounded-lg border border-red-200 px-3 py-2 text-sm font-semibold text-red-600 transition-colors hover:bg-red-50 disabled:opacity-50"
+              >
+                <Trash2 className="h-4 w-4" />
+                {excluindoId === lote.id ? 'Excluindo...' : 'Excluir'}
               </button>
-            )}
+            </div>
           </div>
         ))}
       </div>

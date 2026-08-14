@@ -3,9 +3,10 @@ from decimal import Decimal
 from io import BytesIO
 
 import qrcode
-from django.db.models import Sum
+from django.db.models import ProtectedError, Sum
 from django.http import HttpResponse
 from rest_framework import generics, status
+from rest_framework.exceptions import ValidationError
 from rest_framework.generics import get_object_or_404
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -138,10 +139,16 @@ class CupomAdminListCreateView(generics.ListCreateAPIView):
     serializer_class = CupomAdminSerializer
 
 
-class CupomAdminDetailView(generics.RetrieveUpdateAPIView):
+class CupomAdminDetailView(generics.RetrieveUpdateDestroyAPIView):
     permission_classes = [IsAdminUser]
     queryset = Cupom.objects.all()
     serializer_class = CupomAdminSerializer
+
+    def perform_destroy(self, instance):
+        try:
+            instance.delete()
+        except ProtectedError:
+            raise ValidationError({'detail': 'Não é possível excluir um cupom com inscrições vinculadas.'})
 
 
 class DashboardView(APIView):
