@@ -135,7 +135,6 @@ export function Home() {
                 </div>
                 <h3 className="mb-2 text-2xl font-bold text-gray-900">{lote.nome}</h3>
                 <div className="mb-4 text-4xl font-bold text-flame">R$ {lote.preco}</div>
-                <p className="mb-6 text-sm text-gray-600">{lote.vagas_restantes} vaga(s) restante(s)</p>
                 <button onClick={() => navigate('/inscricao')} className="btn-primary w-full">
                   Inscrever-se
                 </button>
