@@ -28,8 +28,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   async function login(email: string, password: string) {
     const response = await api.post<{ token: string }>('/api/auth/login/', { email, password })
-    localStorage.setItem(STORAGE_KEY, response.data.token)
-    setToken(response.data.token)
+    const novoToken = response.data?.token
+    if (typeof novoToken !== 'string' || !novoToken) {
+      // Resposta 200 mas sem token utilizável — ex: VITE_API_URL mal configurado
+      // fazendo a chamada cair numa URL errada (que devolve HTML, não a API).
+      throw new Error('Resposta inesperada do servidor ao fazer login.')
+    }
+    localStorage.setItem(STORAGE_KEY, novoToken)
+    setToken(novoToken)
   }
 
   function logout() {

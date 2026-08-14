@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { AlertCircle, Flame, Lock, Mail } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
+import { formatApiErrors } from '../services/api'
 
 export function AdminLoginPage() {
   const { login } = useAuth()
@@ -19,8 +20,15 @@ export function AdminLoginPage() {
     try {
       await login(email, password)
       navigate('/admin')
-    } catch {
-      setErro('Email ou senha inválidos.')
+    } catch (error: unknown) {
+      const response = (error as { response?: { data?: unknown; status?: number } })?.response
+      if (response) {
+        setErro(formatApiErrors(response.data).join(' ') || 'Email ou senha inválidos.')
+      } else {
+        // Sem response: erro de rede, CORS, ou resposta em formato inesperado
+        // (ex: URL da API mal configurada) — não é "senha errada".
+        setErro('Não foi possível conectar ao servidor. Tente novamente em instantes.')
+      }
     } finally {
       setEnviando(false)
     }
