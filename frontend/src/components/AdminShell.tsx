@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
-import { BarChart3, ClipboardCheck, Flame, Layers, LogOut, Menu, QrCode, TicketPercent, X } from 'lucide-react'
+import { BarChart3, ClipboardCheck, Flame, Layers, ListChecks, LogOut, Menu, QrCode, TicketPercent, X } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 
 const NAV_ITEMS = [
   { to: '/admin', label: 'Dashboard', icon: BarChart3, end: true },
+  { to: '/admin/inscricoes', label: 'Inscrições', icon: ListChecks, end: false },
   { to: '/admin/fila-aprovacao', label: 'Fila de aprovação', icon: ClipboardCheck, end: false },
   { to: '/admin/checkin', label: 'Check-in', icon: QrCode, end: false },
   { to: '/admin/lotes', label: 'Lotes', icon: Layers, end: false },

@@ -166,5 +166,35 @@ class AdminInscricaoQueueSerializer(serializers.ModelSerializer):
             return None
 
 
+class AdminInscricaoListSerializer(serializers.ModelSerializer):
+    lote = serializers.CharField(source='lote.nome', read_only=True)
+    cupom = serializers.CharField(source='cupom.codigo', read_only=True, allow_null=True)
+    tem_comprovante = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Inscricao
+        fields = [
+            'id', 'nome_completo', 'cpf', 'email', 'celular', 'sexo', 'data_nascimento',
+            'lote', 'cupom', 'preco_final', 'status', 'motivo_rejeicao', 'codigo_checkin',
+            'checkin_em', 'tem_comprovante', 'criado_em',
+        ]
+
+    def get_tem_comprovante(self, obj):
+        # Só o booleano: gerar a URL assinada é uma chamada HTTP ao Supabase por
+        # linha, inviável numa listagem — quem quiser ver pede sob demanda em
+        # ComprovanteUrlView.
+        return bool(obj.comprovante_path)
+
+
+class AlterarStatusInscricaoSerializer(serializers.Serializer):
+    status = serializers.ChoiceField(choices=Inscricao.Status.choices)
+    motivo = serializers.CharField(max_length=500, required=False, allow_blank=True)
+
+    def validate(self, attrs):
+        if attrs['status'] == Inscricao.Status.REJEITADA and not attrs.get('motivo', '').strip():
+            raise serializers.ValidationError({'motivo': 'Obrigatório ao rejeitar uma inscrição.'})
+        return attrs
+
+
 class RejeitarInscricaoSerializer(serializers.Serializer):
     motivo = serializers.CharField(max_length=500)

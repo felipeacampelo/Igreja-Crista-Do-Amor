@@ -18,7 +18,7 @@ from apps.lotes.models import Lote
 from .importacao import importar_linhas
 from .models import CheckinAuditLog, Cupom, Inscricao
 from .pix import gerar_payload_pix
-from .storage import UploadComprovanteError
+from .storage import AssinaturaUrlError, UploadComprovanteError
 
 User = get_user_model()
 
@@ -442,6 +442,283 @@ class PixPayloadTests(TestCase):
         campos = _parse_tlv(payload[:-4])
         self.assertNotIn('Ã', campos['59'])
         self.assertNotIn('É', campos['59'])
+
+
+class AdminInscricaoListTests(APITestCase):
+    def setUp(self):
+        self.lote = Lote.objects.create(nome='Lote 1', preco=Decimal('150.00'), limite_vagas=50)
+        self.aprovador = User.objects.create_user(email='aprovador@fireconference.local', password='senha-forte-123')
+        self.aprovador.user_permissions.add(Permission.objects.get(codename='aprovar_pagamento'))
+        self.sem_permissao = User.objects.create_user(
+            email='sem-permissao@fireconference.local', password='senha-forte-123',
+        )
+
+        self.pendente = self._cria('Ana Pendente', '111.111.111-11', Inscricao.Status.PENDENTE)
+        self.enviado = self._cria('Bruno Enviado', '222.222.222-22', Inscricao.Status.COMPROVANTE_ENVIADO)
+        self.confirmada = self._cria('Carla Confirmada', '333.333.333-33', Inscricao.Status.CONFIRMADA)
+        self.rejeitada = self._cria('Diego Rejeitado', '444.444.444-44', Inscricao.Status.REJEITADA)
+
+    def _cria(self, nome, cpf, situacao, **overrides):
+        dados = dict(
+            nome_completo=nome, cpf=cpf, email=f'{cpf}@example.com', sexo='F',
+            data_nascimento=data_nascimento_com_idade(25), celular='11999990000',
+            lote=self.lote, preco_final=Decimal('150.00'), status=situacao,
+        )
+        dados.update(overrides)
+        return Inscricao.objects.create(**dados)
+
+    def _auth(self):
+        self.client.force_authenticate(user=self.aprovador)
+
+    def test_lists_every_status_by_default(self):
+        self._auth()
+
+        response = self.client.get('/api/admin/inscricoes/')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data), 4)
+
+    def test_filters_by_single_status(self):
+        self._auth()
+
+        response = self.client.get('/api/admin/inscricoes/?status=rejeitada')
+
+        self.assertEqual(len(response.data), 1)
+        self.assertEqual(response.data[0]['nome_completo'], 'Diego Rejeitado')
+
+    def test_filters_by_multiple_statuses(self):
+        self._auth()
+
+        response = self.client.get('/api/admin/inscricoes/?status=pendente,confirmada')
+
+        nomes = sorted(item['nome_completo'] for item in response.data)
+        self.assertEqual(nomes, ['Ana Pendente', 'Carla Confirmada'])
+
+    def test_searches_by_name_case_insensitively(self):
+        self._auth()
+
+        response = self.client.get('/api/admin/inscricoes/?q=carla')
+
+        self.assertEqual(len(response.data), 1)
+        self.assertEqual(response.data[0]['nome_completo'], 'Carla Confirmada')
+
+    def test_searches_by_formatted_cpf(self):
+        self._auth()
+
+        response = self.client.get('/api/admin/inscricoes/?q=222.222.222-22')
+
+        self.assertEqual(len(response.data), 1)
+        self.assertEqual(response.data[0]['nome_completo'], 'Bruno Enviado')
+
+    def test_searches_by_cpf_digits_only(self):
+        # CPF é gravado formatado; digitar só os números precisa achar do mesmo jeito.
+        self._auth()
+
+        response = self.client.get('/api/admin/inscricoes/?q=33333333333')
+
+        self.assertEqual(len(response.data), 1)
+        self.assertEqual(response.data[0]['nome_completo'], 'Carla Confirmada')
+
+    def test_orders_by_name(self):
+        self._auth()
+
+        response = self.client.get('/api/admin/inscricoes/?ordering=nome_completo')
+
+        nomes = [item['nome_completo'] for item in response.data]
+        self.assertEqual(nomes, sorted(nomes))
+
+    def test_defaults_to_newest_first(self):
+        self._auth()
+
+        response = self.client.get('/api/admin/inscricoes/')
+
+        self.assertEqual(response.data[0]['nome_completo'], 'Diego Rejeitado')
+
+    def test_tem_comprovante_reflects_attachment(self):
+        self._cria(
+            'Com Comprovante', '555.555.555-55', Inscricao.Status.COMPROVANTE_ENVIADO,
+            comprovante_path='token/comprovante.png',
+        )
+        self._auth()
+
+        response = self.client.get('/api/admin/inscricoes/?q=Com Comprovante')
+
+        self.assertTrue(response.data[0]['tem_comprovante'])
+
+    def test_user_without_permission_cannot_list(self):
+        self.client.force_authenticate(user=self.sem_permissao)
+
+        response = self.client.get('/api/admin/inscricoes/')
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_anonymous_cannot_list(self):
+        response = self.client.get('/api/admin/inscricoes/')
+
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+
+class AlterarStatusInscricaoTests(APITestCase):
+    def setUp(self):
+        self.lote = Lote.objects.create(nome='Lote 1', preco=Decimal('150.00'), limite_vagas=50)
+        self.aprovador = User.objects.create_user(email='aprovador@fireconference.local', password='senha-forte-123')
+        self.aprovador.user_permissions.add(Permission.objects.get(codename='aprovar_pagamento'))
+        self.sem_permissao = User.objects.create_user(
+            email='sem-permissao@fireconference.local', password='senha-forte-123',
+        )
+
+    def _cria(self, situacao, **overrides):
+        dados = dict(
+            nome_completo='Maria Silva', cpf='111.111.111-11', email='maria@example.com', sexo='F',
+            data_nascimento=data_nascimento_com_idade(25), celular='11999990000',
+            lote=self.lote, preco_final=Decimal('150.00'), status=situacao,
+        )
+        dados.update(overrides)
+        return Inscricao.objects.create(**dados)
+
+    def _auth(self):
+        self.client.force_authenticate(user=self.aprovador)
+
+    def _post(self, inscricao, **body):
+        return self.client.post(f'/api/admin/inscricoes/{inscricao.id}/status/', body)
+
+    def test_confirmada_can_be_reverted_to_rejeitada(self):
+        # É o ponto da tela: desfazer um veredito já dado, não só decidir a fila.
+        inscricao = self._cria(Inscricao.Status.CONFIRMADA)
+        self._auth()
+
+        response = self._post(inscricao, status='rejeitada', motivo='Pagamento não localizado')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        inscricao.refresh_from_db()
+        self.assertEqual(inscricao.status, Inscricao.Status.REJEITADA)
+        self.assertEqual(inscricao.motivo_rejeicao, 'Pagamento não localizado')
+
+    def test_rejeitada_can_be_confirmed_and_sends_ingresso(self):
+        inscricao = self._cria(Inscricao.Status.REJEITADA, motivo_rejeicao='Engano')
+        self._auth()
+
+        response = self._post(inscricao, status='confirmada')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        inscricao.refresh_from_db()
+        self.assertEqual(inscricao.status, Inscricao.Status.CONFIRMADA)
+        self.assertEqual(len(mail.outbox), 1)
+
+    def test_motivo_is_cleared_when_leaving_rejeitada(self):
+        inscricao = self._cria(Inscricao.Status.REJEITADA, motivo_rejeicao='Engano')
+        self._auth()
+
+        self._post(inscricao, status='pendente')
+
+        inscricao.refresh_from_db()
+        self.assertEqual(inscricao.motivo_rejeicao, '')
+
+    def test_rejecting_without_motivo_is_refused(self):
+        inscricao = self._cria(Inscricao.Status.CONFIRMADA)
+        self._auth()
+
+        response = self._post(inscricao, status='rejeitada')
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        inscricao.refresh_from_db()
+        self.assertEqual(inscricao.status, Inscricao.Status.CONFIRMADA)
+
+    def test_setting_the_same_status_is_refused(self):
+        inscricao = self._cria(Inscricao.Status.PENDENTE)
+        self._auth()
+
+        response = self._post(inscricao, status='pendente')
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_confirming_an_already_confirmada_does_not_resend_email(self):
+        inscricao = self._cria(Inscricao.Status.CONFIRMADA)
+        self._auth()
+
+        self._post(inscricao, status='confirmada')
+
+        self.assertEqual(len(mail.outbox), 0)
+
+    def test_inscricao_with_checkin_cannot_leave_confirmada(self):
+        inscricao = self._cria(
+            Inscricao.Status.CONFIRMADA, checkin_em=timezone.now(), checkin_por=self.aprovador,
+        )
+        self._auth()
+
+        response = self._post(inscricao, status='rejeitada', motivo='Erro')
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        inscricao.refresh_from_db()
+        self.assertEqual(inscricao.status, Inscricao.Status.CONFIRMADA)
+
+    def test_invalid_status_value_is_refused(self):
+        inscricao = self._cria(Inscricao.Status.PENDENTE)
+        self._auth()
+
+        response = self._post(inscricao, status='inventado')
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_user_without_permission_cannot_change_status(self):
+        inscricao = self._cria(Inscricao.Status.PENDENTE)
+        self.client.force_authenticate(user=self.sem_permissao)
+
+        response = self._post(inscricao, status='confirmada')
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        inscricao.refresh_from_db()
+        self.assertEqual(inscricao.status, Inscricao.Status.PENDENTE)
+
+    def test_anonymous_cannot_change_status(self):
+        inscricao = self._cria(Inscricao.Status.PENDENTE)
+
+        response = self._post(inscricao, status='confirmada')
+
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+
+class ComprovanteUrlViewTests(APITestCase):
+    def setUp(self):
+        self.lote = Lote.objects.create(nome='Lote 1', preco=Decimal('150.00'), limite_vagas=50)
+        self.aprovador = User.objects.create_user(email='aprovador@fireconference.local', password='senha-forte-123')
+        self.aprovador.user_permissions.add(Permission.objects.get(codename='aprovar_pagamento'))
+        self.client.force_authenticate(user=self.aprovador)
+
+    def _cria(self, **overrides):
+        dados = dict(
+            nome_completo='Maria Silva', cpf='111.111.111-11', email='maria@example.com', sexo='F',
+            data_nascimento=data_nascimento_com_idade(25), celular='11999990000',
+            lote=self.lote, preco_final=Decimal('150.00'),
+        )
+        dados.update(overrides)
+        return Inscricao.objects.create(**dados)
+
+    @patch('apps.inscricoes.views.gerar_url_assinada')
+    def test_returns_signed_url(self, mock_url):
+        mock_url.return_value = 'https://signed.example.com/comprovante.png'
+        inscricao = self._cria(comprovante_path='token/comprovante.png')
+
+        response = self.client.get(f'/api/admin/inscricoes/{inscricao.id}/comprovante-url/')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['url'], 'https://signed.example.com/comprovante.png')
+
+    def test_returns_404_when_there_is_no_comprovante(self):
+        inscricao = self._cria()
+
+        response = self.client.get(f'/api/admin/inscricoes/{inscricao.id}/comprovante-url/')
+
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    @patch('apps.inscricoes.views.gerar_url_assinada')
+    def test_storage_failure_becomes_502(self, mock_url):
+        mock_url.side_effect = AssinaturaUrlError('boom')
+        inscricao = self._cria(comprovante_path='token/comprovante.png')
+
+        response = self.client.get(f'/api/admin/inscricoes/{inscricao.id}/comprovante-url/')
+
+        self.assertEqual(response.status_code, status.HTTP_502_BAD_GATEWAY)
 
 
 class AprovacaoPagamentoTests(APITestCase):

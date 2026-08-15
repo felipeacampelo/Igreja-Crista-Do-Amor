@@ -5,6 +5,7 @@ import { AdminCheckinPage } from './pages/AdminCheckinPage'
 import { AdminCuponsPage } from './pages/AdminCuponsPage'
 import { AdminDashboardPage } from './pages/AdminDashboardPage'
 import { AdminFilaAprovacaoPage } from './pages/AdminFilaAprovacaoPage'
+import { AdminInscricoesPage } from './pages/AdminInscricoesPage'
 import { AdminLoginPage } from './pages/AdminLoginPage'
 import { AdminLotesPage } from './pages/AdminLotesPage'
 import { Home } from './pages/Home'
@@ -25,6 +26,14 @@ function App() {
             element={
               <PrivateAdminRoute>
                 <AdminDashboardPage />
+              </PrivateAdminRoute>
+            }
+          />
+          <Route
+            path="/admin/inscricoes"
+            element={
+              <PrivateAdminRoute>
+                <AdminInscricoesPage />
               </PrivateAdminRoute>
             }
           />

@@ -33,6 +33,27 @@ export type InscricaoFilaAprovacao = {
   criado_em: string
 }
 
+export type InscricaoSituacao = 'pendente' | 'comprovante_enviado' | 'confirmada' | 'rejeitada'
+
+export type InscricaoAdmin = {
+  id: number
+  nome_completo: string
+  cpf: string
+  email: string
+  celular: string
+  sexo: 'M' | 'F'
+  data_nascimento: string
+  lote: string
+  cupom: string | null
+  preco_final: string
+  status: InscricaoSituacao
+  motivo_rejeicao: string
+  codigo_checkin: string
+  checkin_em: string | null
+  tem_comprovante: boolean
+  criado_em: string
+}
+
 export type CheckinResultado = {
   resultado: 'aceita' | 'duplicada' | 'bloqueada'
   nome_completo: string | null

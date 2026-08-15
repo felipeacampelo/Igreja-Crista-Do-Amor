@@ -1,13 +1,16 @@
 import logging
 import os
+import re
 from decimal import Decimal
 from io import BytesIO
 
 import qrcode
-from django.db.models import ProtectedError, Sum
+from django.db.models import F, ProtectedError, Q, Sum, Value
+from django.db.models.functions import Replace
 from django.http import HttpResponse
 from rest_framework import generics, status
 from rest_framework.exceptions import ValidationError
+from rest_framework.filters import OrderingFilter
 from rest_framework.generics import get_object_or_404
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -22,14 +25,16 @@ from .models import Cupom, Inscricao
 from .notificacoes import enviar_ingresso_email_seguro
 from .pix import payload_pix_da_inscricao
 from .serializers import (
+    AdminInscricaoListSerializer,
     AdminInscricaoQueueSerializer,
+    AlterarStatusInscricaoSerializer,
     ComprovanteUploadSerializer,
     CupomAdminSerializer,
     InscricaoCreateSerializer,
     InscricaoStatusSerializer,
     RejeitarInscricaoSerializer,
 )
-from .storage import UploadComprovanteError, upload_comprovante
+from .storage import AssinaturaUrlError, UploadComprovanteError, gerar_url_assinada, upload_comprovante
 
 logger = logging.getLogger('apps.inscricoes')
 
@@ -95,6 +100,117 @@ class FilaAprovacaoView(generics.ListAPIView):
     permission_classes = [PodeAprovarPagamento]
     serializer_class = AdminInscricaoQueueSerializer
     queryset = Inscricao.objects.filter(status=Inscricao.Status.COMPROVANTE_ENVIADO)
+
+
+class AdminInscricaoListView(generics.ListAPIView):
+    """Listagem completa (todos os status), com busca, filtro e ordenação."""
+
+    permission_classes = [PodeAprovarPagamento]
+    serializer_class = AdminInscricaoListSerializer
+    filter_backends = [OrderingFilter]
+    ordering_fields = ['nome_completo', 'criado_em', 'status', 'preco_final', 'lote__nome']
+    # '-id' como desempate: várias inscrições podem ter o mesmo criado_em (ou o
+    # mesmo nome/lote), e sem critério estável a ordem entre elas varia de uma
+    # requisição pra outra.
+    ordering = ['-criado_em', '-id']
+
+    def get_queryset(self):
+        queryset = Inscricao.objects.select_related('lote', 'cupom')
+
+        situacoes = [s for s in self.request.query_params.get('status', '').split(',') if s]
+        if situacoes:
+            queryset = queryset.filter(status__in=situacoes)
+
+        busca = self.request.query_params.get('q', '').strip()
+        if busca:
+            filtro = (
+                Q(nome_completo__icontains=busca)
+                | Q(email__icontains=busca)
+                | Q(cpf__icontains=busca)
+                | Q(codigo_checkin__iexact=busca)
+            )
+            # CPF é gravado formatado (000.000.000-00); uma busca digitada só com
+            # números não casaria no icontains acima — compara também contra a
+            # versão sem pontuação.
+            digitos = re.sub(r'\D', '', busca)
+            if digitos:
+                queryset = queryset.annotate(
+                    cpf_digitos=Replace(
+                        Replace(F('cpf'), Value('.'), Value('')), Value('-'), Value('')
+                    ),
+                )
+                filtro |= Q(cpf_digitos__contains=digitos)
+            queryset = queryset.filter(filtro)
+
+        return queryset
+
+
+class AlterarStatusInscricaoView(APIView):
+    """
+    Correção manual de veredito pelo aprovador — diferente de
+    Aprovar/RejeitarInscricaoView, aceita qualquer status de origem (serve pra
+    desfazer um engano, não só pra decidir a fila).
+    """
+
+    permission_classes = [PodeAprovarPagamento]
+
+    def post(self, request, pk):
+        inscricao = get_object_or_404(Inscricao, pk=pk)
+
+        serializer = AlterarStatusInscricaoSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        novo_status = serializer.validated_data['status']
+        motivo = serializer.validated_data.get('motivo', '').strip()
+
+        if novo_status == inscricao.status:
+            return Response(
+                {'detail': 'A inscrição já está nesse status.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Já entrou no evento: tirar de confirmada deixaria um check-in registrado
+        # para uma inscrição que o sistema não considera mais válida.
+        if inscricao.checkin_em and novo_status != Inscricao.Status.CONFIRMADA:
+            return Response(
+                {'detail': 'Inscrição já fez check-in; não é possível alterar o status.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        era_confirmada = inscricao.status == Inscricao.Status.CONFIRMADA
+        inscricao.status = novo_status
+        inscricao.motivo_rejeicao = motivo if novo_status == Inscricao.Status.REJEITADA else ''
+        inscricao.save(update_fields=['status', 'motivo_rejeicao', 'atualizado_em'])
+
+        # Só manda ingresso quando a inscrição passa a ser confirmada agora —
+        # sem isso, corrigir qualquer outro campo de uma já confirmada reenviaria
+        # o e-mail.
+        if novo_status == Inscricao.Status.CONFIRMADA and not era_confirmada:
+            enviar_ingresso_email_seguro(inscricao)
+
+        return Response(AdminInscricaoListSerializer(inscricao).data)
+
+
+class ComprovanteUrlView(APIView):
+    """URL assinada sob demanda — a listagem só informa se existe comprovante."""
+
+    permission_classes = [PodeAprovarPagamento]
+
+    def get(self, request, pk):
+        inscricao = get_object_or_404(Inscricao, pk=pk)
+        if not inscricao.comprovante_path:
+            return Response(
+                {'detail': 'Inscrição sem comprovante anexado.'},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        try:
+            return Response({'url': gerar_url_assinada(inscricao.comprovante_path)})
+        except AssinaturaUrlError as exc:
+            logger.error('Falha ao assinar comprovante inscricao_id=%s: %s', inscricao.id, exc)
+            return Response(
+                {'detail': 'Não foi possível abrir o comprovante. Tente novamente.'},
+                status=status.HTTP_502_BAD_GATEWAY,
+            )
 
 
 def _inscricao_em_revisao_ou_erro(pk):
