@@ -1,3 +1,4 @@
+import logging
 import os
 from decimal import Decimal
 from io import BytesIO
@@ -29,6 +30,8 @@ from .serializers import (
     RejeitarInscricaoSerializer,
 )
 from .storage import UploadComprovanteError, upload_comprovante
+
+logger = logging.getLogger('apps.inscricoes')
 
 
 class InscricaoCreateView(generics.CreateAPIView):
@@ -70,7 +73,12 @@ class ComprovanteUploadView(APIView):
 
         try:
             upload_comprovante(caminho, arquivo)
-        except UploadComprovanteError:
+        except UploadComprovanteError as exc:
+            # A mensagem pro usuário é deliberadamente genérica (não expõe detalhe
+            # de infra) — o motivo real (ex: credencial inválida, bucket
+            # inexistente) só existe aqui, senão fica impossível diagnosticar em
+            # produção sem acesso ao Supabase.
+            logger.error('Falha no upload de comprovante inscricao_id=%s: %s', inscricao.id, exc)
             return Response(
                 {'detail': 'Não foi possível enviar o comprovante. Tente novamente.'},
                 status=status.HTTP_502_BAD_GATEWAY,
