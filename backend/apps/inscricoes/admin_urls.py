@@ -5,6 +5,7 @@ from .views import (
     AlterarStatusInscricaoView,
     AprovarInscricaoView,
     ComprovanteUrlView,
+    ExcluirInscricaoRejeitadaView,
     FilaAprovacaoView,
     RejeitarInscricaoView,
 )
@@ -12,6 +13,7 @@ from .views import (
 urlpatterns = [
     path('', AdminInscricaoListView.as_view(), name='inscricao-admin-list'),
     path('fila-aprovacao/', FilaAprovacaoView.as_view(), name='fila-aprovacao'),
+    path('<int:pk>/', ExcluirInscricaoRejeitadaView.as_view(), name='inscricao-excluir'),
     path('<int:pk>/aprovar/', AprovarInscricaoView.as_view(), name='inscricao-aprovar'),
     path('<int:pk>/rejeitar/', RejeitarInscricaoView.as_view(), name='inscricao-rejeitar'),
     path('<int:pk>/status/', AlterarStatusInscricaoView.as_view(), name='inscricao-alterar-status'),

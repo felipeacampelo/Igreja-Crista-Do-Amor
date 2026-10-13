@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { AlertCircle, FileText, Search } from 'lucide-react'
+import { AlertCircle, FileText, Search, Trash2 } from 'lucide-react'
 import { AdminShell } from '../components/AdminShell'
 import { adminApi, formatApiErrors } from '../services/api'
 import type { InscricaoAdmin, InscricaoSituacao } from '../types'
@@ -49,6 +49,8 @@ export function AdminInscricoesPage() {
   const [novoStatus, setNovoStatus] = useState<InscricaoSituacao>('confirmada')
   const [motivo, setMotivo] = useState('')
   const [salvandoId, setSalvandoId] = useState<number | null>(null)
+  const [confirmandoExclusaoId, setConfirmandoExclusaoId] = useState<number | null>(null)
+  const [excluindoId, setExcluindoId] = useState<number | null>(null)
 
   const carregar = useCallback(() => {
     const params = new URLSearchParams({ ordering: ordenacao })
@@ -104,6 +106,22 @@ export function AdminInscricoesPage() {
       setErro(formatApiErrors(data)[0] ?? 'Não foi possível alterar a situação.')
     } finally {
       setSalvandoId(null)
+    }
+  }
+
+  async function excluirInscricao(id: number) {
+    setErro(null)
+    setExcluindoId(id)
+
+    try {
+      await adminApi.delete(`/api/admin/inscricoes/${id}/`)
+      setConfirmandoExclusaoId(null)
+      carregar()
+    } catch (error: unknown) {
+      const data = (error as { response?: { data?: unknown } })?.response?.data
+      setErro(formatApiErrors(data)[0] ?? 'Não foi possível excluir a inscrição.')
+    } finally {
+      setExcluindoId(null)
     }
   }
 
@@ -240,6 +258,36 @@ export function AdminInscricoesPage() {
                         Alterar situação
                       </button>
                     )}
+                    {inscricao.status === 'rejeitada' &&
+                      (confirmandoExclusaoId === inscricao.id ? (
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm text-gray-700">Excluir definitivamente?</span>
+                          <button
+                            type="button"
+                            onClick={() => excluirInscricao(inscricao.id)}
+                            disabled={excluindoId === inscricao.id}
+                            className="rounded-lg bg-red-600 px-3 py-2 text-sm font-semibold text-white transition-colors hover:bg-red-700 disabled:opacity-50"
+                          >
+                            {excluindoId === inscricao.id ? 'Excluindo...' : 'Sim, excluir'}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setConfirmandoExclusaoId(null)}
+                            className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-semibold text-gray-700 transition-colors hover:bg-gray-50"
+                          >
+                            Cancelar
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => setConfirmandoExclusaoId(inscricao.id)}
+                          className="inline-flex items-center gap-1.5 rounded-lg border border-red-200 px-3 py-2 text-sm font-semibold text-red-600 transition-colors hover:bg-red-50"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                          Excluir
+                        </button>
+                      ))}
                   </div>
                 </div>
 

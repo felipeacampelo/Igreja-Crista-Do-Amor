@@ -558,6 +558,82 @@ class AdminInscricaoListTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 
 
+class ExcluirInscricaoRejeitadaTests(APITestCase):
+    def setUp(self):
+        self.lote = Lote.objects.create(nome='Lote 1', preco=Decimal('150.00'), limite_vagas=50)
+        self.aprovador = User.objects.create_user(email='aprovador@fireconference.local', password='senha-forte-123')
+        self.aprovador.user_permissions.add(Permission.objects.get(codename='aprovar_pagamento'))
+        self.sem_permissao = User.objects.create_user(
+            email='sem-permissao@fireconference.local', password='senha-forte-123',
+        )
+
+    def _cria(self, situacao, **overrides):
+        dados = dict(
+            nome_completo='Maria Silva', cpf='111.111.111-11', email='maria@example.com', sexo='F',
+            data_nascimento=data_nascimento_com_idade(25), celular='11999990000',
+            lote=self.lote, preco_final=Decimal('150.00'), status=situacao,
+        )
+        dados.update(overrides)
+        return Inscricao.objects.create(**dados)
+
+    def test_deletes_rejeitada(self):
+        inscricao = self._cria(Inscricao.Status.REJEITADA, motivo_rejeicao='Engano')
+        self.client.force_authenticate(user=self.aprovador)
+
+        response = self.client.delete(f'/api/admin/inscricoes/{inscricao.id}/')
+
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertFalse(Inscricao.objects.filter(id=inscricao.id).exists())
+
+    def test_refuses_to_delete_non_rejeitada(self):
+        # Pendente/aguardando/confirmada ainda contam como vaga ou pagamento em
+        # análise; só rejeitada pode sair.
+        self.client.force_authenticate(user=self.aprovador)
+        for situacao in (
+            Inscricao.Status.PENDENTE,
+            Inscricao.Status.COMPROVANTE_ENVIADO,
+            Inscricao.Status.CONFIRMADA,
+        ):
+            with self.subTest(situacao=situacao):
+                inscricao = self._cria(situacao, cpf=f'{situacao[:3]}-{situacao}')
+
+                response = self.client.delete(f'/api/admin/inscricoes/{inscricao.id}/')
+
+                self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+                self.assertTrue(Inscricao.objects.filter(id=inscricao.id).exists())
+
+    def test_refuses_when_checkin_log_references_it(self):
+        from .models import CheckinAuditLog
+
+        inscricao = self._cria(Inscricao.Status.REJEITADA)
+        CheckinAuditLog.objects.create(
+            inscricao=inscricao, resultado=CheckinAuditLog.Resultado.BLOQUEADA,
+            codigo_tentado='ABC123', usuario=self.aprovador,
+        )
+        self.client.force_authenticate(user=self.aprovador)
+
+        response = self.client.delete(f'/api/admin/inscricoes/{inscricao.id}/')
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertTrue(Inscricao.objects.filter(id=inscricao.id).exists())
+
+    def test_user_without_permission_cannot_delete(self):
+        inscricao = self._cria(Inscricao.Status.REJEITADA)
+        self.client.force_authenticate(user=self.sem_permissao)
+
+        response = self.client.delete(f'/api/admin/inscricoes/{inscricao.id}/')
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertTrue(Inscricao.objects.filter(id=inscricao.id).exists())
+
+    def test_anonymous_cannot_delete(self):
+        inscricao = self._cria(Inscricao.Status.REJEITADA)
+
+        response = self.client.delete(f'/api/admin/inscricoes/{inscricao.id}/')
+
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+
 class AlterarStatusInscricaoTests(APITestCase):
     def setUp(self):
         self.lote = Lote.objects.create(nome='Lote 1', preco=Decimal('150.00'), limite_vagas=50)

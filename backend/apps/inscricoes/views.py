@@ -190,6 +190,37 @@ class AlterarStatusInscricaoView(APIView):
         return Response(AdminInscricaoListSerializer(inscricao).data)
 
 
+class ExcluirInscricaoRejeitadaView(APIView):
+    """
+    Remove definitivamente uma inscrição rejeitada (ex.: cadastro duplicado ou
+    de teste). Só aceita rejeitadas: qualquer outra situação ainda conta como
+    vaga ou como pagamento em análise, então a exclusão não é permitida.
+    """
+
+    permission_classes = [PodeAprovarPagamento]
+
+    def delete(self, request, pk):
+        inscricao = get_object_or_404(Inscricao, pk=pk)
+
+        if inscricao.status != Inscricao.Status.REJEITADA:
+            return Response(
+                {'detail': 'Só é possível excluir inscrições rejeitadas.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            inscricao.delete()
+        except ProtectedError:
+            # Existe registro de tentativa de check-in ligado a esta inscrição
+            # (CheckinAuditLog usa PROTECT para preservar o histórico de auditoria).
+            return Response(
+                {'detail': 'Não é possível excluir: a inscrição tem registros de check-in.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
 class ComprovanteUrlView(APIView):
     """URL assinada sob demanda — a listagem só informa se existe comprovante."""
 
