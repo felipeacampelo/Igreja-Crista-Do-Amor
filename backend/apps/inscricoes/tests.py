@@ -585,6 +585,39 @@ class ExcluirInscricaoRejeitadaTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
         self.assertFalse(Inscricao.objects.filter(id=inscricao.id).exists())
 
+    @patch('apps.inscricoes.views.remover_comprovante')
+    def test_delete_also_removes_comprovante_from_storage(self, mock_remover):
+        inscricao = self._cria(
+            Inscricao.Status.REJEITADA, comprovante_path='token/comprovante.png',
+        )
+        self.client.force_authenticate(user=self.aprovador)
+
+        self.client.delete(f'/api/admin/inscricoes/{inscricao.id}/')
+
+        mock_remover.assert_called_once_with('token/comprovante.png')
+
+    @patch('apps.inscricoes.views.remover_comprovante')
+    def test_storage_failure_does_not_undo_the_deletion(self, mock_remover):
+        mock_remover.side_effect = UploadComprovanteError('boom')
+        inscricao = self._cria(
+            Inscricao.Status.REJEITADA, comprovante_path='token/comprovante.png',
+        )
+        self.client.force_authenticate(user=self.aprovador)
+
+        response = self.client.delete(f'/api/admin/inscricoes/{inscricao.id}/')
+
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertFalse(Inscricao.objects.filter(id=inscricao.id).exists())
+
+    @patch('apps.inscricoes.views.remover_comprovante')
+    def test_no_storage_call_when_there_is_no_comprovante(self, mock_remover):
+        inscricao = self._cria(Inscricao.Status.REJEITADA)
+        self.client.force_authenticate(user=self.aprovador)
+
+        self.client.delete(f'/api/admin/inscricoes/{inscricao.id}/')
+
+        mock_remover.assert_not_called()
+
     def test_refuses_to_delete_non_rejeitada(self):
         # Pendente/aguardando/confirmada ainda contam como vaga ou pagamento em
         # análise; só rejeitada pode sair.

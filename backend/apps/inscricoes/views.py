@@ -34,7 +34,13 @@ from .serializers import (
     InscricaoStatusSerializer,
     RejeitarInscricaoSerializer,
 )
-from .storage import AssinaturaUrlError, UploadComprovanteError, gerar_url_assinada, upload_comprovante
+from .storage import (
+    AssinaturaUrlError,
+    UploadComprovanteError,
+    gerar_url_assinada,
+    remover_comprovante,
+    upload_comprovante,
+)
 
 logger = logging.getLogger('apps.inscricoes')
 
@@ -208,6 +214,8 @@ class ExcluirInscricaoRejeitadaView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        caminho_comprovante = inscricao.comprovante_path
+
         try:
             inscricao.delete()
         except ProtectedError:
@@ -217,6 +225,17 @@ class ExcluirInscricaoRejeitadaView(APIView):
                 {'detail': 'Não é possível excluir: a inscrição tem registros de check-in.'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+
+        # O registro já foi apagado; se o arquivo não puder ser removido, não
+        # desfazemos a exclusão — só registramos para limpeza manual posterior.
+        if caminho_comprovante:
+            try:
+                remover_comprovante(caminho_comprovante)
+            except UploadComprovanteError as exc:
+                logger.error(
+                    'Inscrição %s excluída, mas comprovante %s não foi removido do storage: %s',
+                    pk, caminho_comprovante, exc,
+                )
 
         return Response(status=status.HTTP_204_NO_CONTENT)
 

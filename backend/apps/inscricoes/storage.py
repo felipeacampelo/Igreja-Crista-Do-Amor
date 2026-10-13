@@ -14,6 +14,25 @@ class AssinaturaUrlError(Exception):
     pass
 
 
+def remover_comprovante(caminho):
+    """Apaga o arquivo do bucket. Lança UploadComprovanteError se falhar."""
+    url = (
+        f'{settings.SUPABASE_URL}/storage/v1/object/'
+        f'{settings.SUPABASE_COMPROVANTES_BUCKET}/{caminho}'
+    )
+    headers = {'Authorization': f'Bearer {settings.SUPABASE_SERVICE_ROLE_KEY}'}
+
+    try:
+        response = requests.delete(url, headers=headers, timeout=30)
+    except requests.RequestException as exc:
+        raise UploadComprovanteError(str(exc)) from exc
+
+    if response.status_code >= 400:
+        raise UploadComprovanteError(
+            f'Supabase Storage retornou {response.status_code}: {response.text[:500]}'
+        )
+
+
 def upload_comprovante(caminho, arquivo):
     url = (
         f'{settings.SUPABASE_URL}/storage/v1/object/'
